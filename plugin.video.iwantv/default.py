@@ -74,14 +74,14 @@ def showEpisodes(url):
     episodesHtml = []
     htmlData = ''
     for i in range(int(xbmcplugin.getSetting(thisPlugin,'loginRetries')) + 1):
-        episodesHtml = getFromCache(url)
-        if episodesHtml == None:
-            htmlData = callServiceApi(url)
-            episodesHtml = common.parseDOM(htmlData, "div", attrs = { 'class' : 'video-other-episode'})
+        #episodesHtml = getFromCache(url)
+        #if episodesHtml == None:
+        htmlData = callServiceApi(url)
+        episodesHtml = common.parseDOM(htmlData, "div", attrs = { 'class' : 'video-other-episode'})
         if len(episodesHtml) == 0:
             login()
         else:
-            setToCache(url, episodesHtml)
+            #setToCache(url, episodesHtml)
             break
     
     if len(episodesHtml) == 0:
