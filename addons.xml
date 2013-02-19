@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addons>
+    <addon id="plugin.video.iwantv"
+           name="iWantv"
+           version="0.0.1"
+           provider-name="todits.xbmc">
+      <requires>
+        <import addon="xbmc.python" version="1.0"/>
+        <import addon="script.module.parsedom" version="0.9.1"/>
+      </requires>
+      <extension point="xbmc.python.pluginsource"
+                library="default.py">
+            <provides>video</provides>
+      </extension>
+      <extension point="xbmc.addon.metadata">
+        <summary>iWantv</summary>
+        <description>This is still in Alpha. iWantv account is required.</description>
+        <platform>all</platform>
+      </extension>
+    </addon>
+</addons>
