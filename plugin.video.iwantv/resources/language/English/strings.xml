@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <strings>
     <string id="50100">Settings</string>
-    <string id="50101">X-Forwarded-For IP</string>
+    <string id="50101">Any Philippine IP (Leave blank to auto generate)</string>
     <string id="50200">iWantv Account</string>
     <string id="50201">Email Address</string>
     <string id="50202">Password</string>

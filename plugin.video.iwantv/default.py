@@ -11,6 +11,7 @@ common.plugin = xbmcaddon.Addon().getAddonInfo('name')
 
 def showCategories():
     accountChanged = checkAccountChange()
+    autoGenerateIp()
     if accountChanged:
         cleanCache(True)
     else:
@@ -77,6 +78,8 @@ def showEpisodes(url):
         #episodesHtml = getFromCache(url)
         #if episodesHtml == None:
         htmlData = callServiceApi(url)
+        with(open(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile')) + r'/showEpisodes-%s.html' % (i), 'w')) as f:
+            f.write(htmlData)
         episodesHtml = common.parseDOM(htmlData, "div", attrs = { 'class' : 'video-other-episode'})
         if len(episodesHtml) == 0:
             login()
@@ -122,7 +125,8 @@ def playEpisode(url):
         playerID = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerID'}, ret = 'value')
         linkBaseURL = common.parseDOM(htmlData, "param", attrs = {'name' : 'linkBaseURL'}, ret = 'value')
         videoPlayer = common.parseDOM(htmlData, "param", attrs = {'name' : '@videoPlayer'}, ret = 'value')
-        if videoHint and playerKey and playerID and linkBaseURL and videoPlayer:
+        myExperience = common.parseDOM(htmlData, "object", attrs = {'class' : 'BrightcoveExperience'}, ret = 'id')
+        if videoHint and playerKey and playerID and videoPlayer:
             break
         else:
             login()
@@ -136,22 +140,46 @@ def playEpisode(url):
     brightCove = BrightCove(brightCoveToken, playerKey[0], playerID[0])
     xForwardedForIp = xbmcplugin.getSetting(thisPlugin,'xForwardedForIp')
     headers = [('X-Forwarded-For', xForwardedForIp)]
-    brightCoveData = brightCove.getBrightCoveData(linkBaseURL[0], videoPlayer[0].replace('ref:', ''), userAgent, **{'headers' : headers})
+    # kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
+    kwargs = {'headers' : headers }
+    # brightCoveData = brightCove.getBrightCoveData(linkBaseURL[0], videoPlayer[0].replace('ref:', ''), userAgent, **{'headers' : headers})
+    brightCoveData = None
+    if len(linkBaseURL) > 0:
+        videoBaseUrl = linkBaseURL[0]
+    else:
+        videoBaseUrl = baseUrl + url
+    if len(myExperience) > 0 and myExperience[0] == 'myExperience':
+        brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, videoPlayer[0].replace('ref:', ''), userAgent, **kwargs)
+    else:
+        brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer[0], userAgent = userAgent, **kwargs)
     videoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
     import re
-    pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)\?')
+    pattern = ''
+    app = ''
+    if r'/ondemand/' in videoUrl:
+        app = 'ondemand'
+        pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)\?')
+    else:
+        app = 'live'
+        pattern = re.compile(r'/live/&(.+)')
     m = pattern.search(videoUrl)
     playPath = m.group(1)
     liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
     liz.setInfo( type="Video", infoLabels = { "Title": name } )
-    liz.setProperty('app', 'ondemand')
+    liz.setProperty('app', app)
     liz.setProperty('PlayPath', playPath)
-    videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
+    if app == 'ondemand':
+        videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
+    if app == 'live':
+        liz.setProperty('IsLive', '1')
     xbmc.Player().play(videoUrl, liz)
     return False
 
-def callServiceApi(path, params = {}, headers = []):
-    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
+def callServiceApi(path, params = {}, headers = [], opener = None):
+    if opener == None:
+        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
+    else:
+        urllib2.install_opener(opener)
     headers.append(('User-Agent', userAgent))
     opener.addheaders = headers
     if params:
@@ -160,13 +188,14 @@ def callServiceApi(path, params = {}, headers = []):
     else:
         response = opener.open(baseUrl + path)
     return response.read()
-
+    
 def login():
     cookieJar.clear()
     emailAddress = xbmcplugin.getSetting(thisPlugin,'emailAddress')
     password = xbmcplugin.getSetting(thisPlugin,'password')
     formdata = { "email" : emailAddress, "password": password }
     callServiceApi("/Account/UserLoginAjax", formdata)
+    cookieJar.save(ignore_discard = True, ignore_expires = True)
     
 def checkAccountChange():
     emailAddress = xbmcplugin.getSetting(thisPlugin,'emailAddress')
@@ -186,6 +215,27 @@ def checkAccountChange():
             f.write(hash)
     return accountChanged
 
+def autoGenerateIp():
+    if xbmcaddon.Addon().getSetting('xForwardedForIp').strip() == '':
+        ipRanges = [
+            (1848401920, 1848406015),
+            (1884172288, 1884176383),
+            (1931427840, 1931431935),
+            (2000617472, 2000621567),
+            (2070704128, 2070708223),
+        ]
+        from random import randint
+        startIpNumber, endIpNumber = ipRanges[randint(0, len(ipRanges) - 1)]
+        ipNumber = randint(startIpNumber, endIpNumber)
+        w = (ipNumber / 16777216) % 256
+        x = (ipNumber / 65536) % 256
+        y = (ipNumber / 256) % 256
+        z = (ipNumber) % 256
+        if z == 0: z = 1
+        if z == 255: z = 254
+        ipAddress = '%s.%s.%s.%s' % (w, x, y, z)
+        xbmcaddon.Addon().setSetting('xForwardedForIp', ipAddress)
+    
 def getFromCache(key):
     try:
         if isCacheEnabled:
@@ -257,10 +307,11 @@ if os.path.exists(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile')))
 
 if cookieJarType == 'LWPCookieJar':
     try:
-        cookieJar.load()
+        cookieJar.load(ignore_discard = True, ignore_expires = True)
     except:
         login()
-# login()
+else:
+    login()
 
 params=getParams()
 url=None
@@ -314,5 +365,5 @@ if success == True:
     xbmcplugin.endOfDirectory(thisPlugin)
 
 
-if cookieJarType == 'LWPCookieJar':
-    cookieJar.save()
+# if cookiejartype == 'LWPCookieJar':
+    # cookieJar.save(ignore_discard = True, ignore_expires = True)

@@ -32,17 +32,14 @@ class BrightCove(object):
         pyamf.register_class(ViewerExperienceRequest, 'com.brightcove.experience.ViewerExperienceRequest')
         pyamf.register_class(ContentOverride, 'com.brightcove.experience.ContentOverride')
 
-    def getBrightCoveData(self, url, contentRefId, userAgent, amfVersion = pyamf.AMF3, **kwargs):
-        contentOverride = ContentOverride(contentRefId)
+    def getBrightCoveData(self, url, contentRefId, userAgent, contentId = 0, amfVersion = pyamf.AMF3, **kwargs):
+        #contentOverride = ContentOverride(contentRefId)
+        contentOverride = ContentOverride(contentRefId, contentId = contentId)
         viewerExperienceRequest = ViewerExperienceRequest(url, self._experienceId, [contentOverride], self._playerKey)
         client = RemotingService(self._amfUrl, user_agent = userAgent, amf_version = amfVersion)
-        print kwargs
         for k, v in kwargs.iteritems():
-            print k
             if k == 'headers':
-                print k
                 for header in v:
-                    print header
                     client.addHTTPHeader(header[0], header[1])
             if k == 'proxy':
                 client.setProxy(v)

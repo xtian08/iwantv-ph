@@ -1,3 +1,7 @@
+0.0.3
+    Support for live streaming
+    Auto-generate IP
+    Bugfix
 0.0.2
     Fixed caching
 0.0.1
