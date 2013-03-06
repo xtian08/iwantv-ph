@@ -171,7 +171,8 @@ def playEpisode(url):
     if app == 'ondemand':
         videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
     if app == 'live':
-        liz.setProperty('IsLive', '1')
+        #liz.setProperty('live', '1')
+        videoUrl = videoUrl + ' live=1 app=live playPath=' + playPath + ' swfUrl=' + 'http://admin.brightcove.com/viewer/us20130222.1010/BrightcoveBootloader.swf'
     xbmc.Player().play(videoUrl, liz)
     return False
 
