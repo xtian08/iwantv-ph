@@ -35,7 +35,7 @@ def getSubCategories(url, htmlData):
     return subCatList
 
 def getLiveChannelDetails(url, htmlData):
-    liveChannelDetailsKey = '%s:chaneldetails:v1' % url
+    liveChannelDetailsKey = '%s:chaneldetails:v2' % url
     liveChannelDetails = getFromCache(liveChannelDetailsKey)
     if liveChannelDetails == None:
         liveChannelDetails = {}
@@ -45,9 +45,7 @@ def getLiveChannelDetails(url, htmlData):
             channelName = common.parseDOM(subCatOuterHtml[0], "li", attrs = { 'groupid' : groupId }, ret = 'name')
             channelDetailsHtml = common.parseDOM(subCatOuterHtml[0], "li", attrs = { 'groupid' : groupId })
             imgUrl = common.parseDOM(channelDetailsHtml[0], "img", ret = 'src')
-            programHtml = callServiceApi('/Home/GetChannelLiveList', params = { 'groupid' : groupId, 'day' : 'Sunday' } )
-            channelUrl = common.parseDOM(programHtml, "a", attrs = { 'class' : 'sched-prog' }, ret = 'href')
-            liveChannelDetails[channelName[0]] = (channelUrl[0], imgUrl[0])
+            liveChannelDetails[channelName[0]] = (r'{ "groupid" : %s, "day" : "Sunday" }' % groupId, imgUrl[0])
         setToCache(liveChannelDetailsKey, liveChannelDetails)
     return liveChannelDetails
     
@@ -60,7 +58,7 @@ def showSubCategories(url):
     if url == liveShowsPath:
         liveChannelDetails = getLiveChannelDetails(url, htmlData)
         for k, v in liveChannelDetails.iteritems():
-            addDir(k, v[0], 4, v[1])
+            addDir(k, v[0], 5, v[1])
     else:
         typeId = url[-1:]
         for s in subCatList:
@@ -137,8 +135,16 @@ def showEpisodes(url):
         else:
             addDir(title[0], url[0], 4, thumbnail[0])
     return True
-        
-def playEpisode(url):
+
+def getPlayUrl(jsonParams):
+    params = json.loads(jsonParams)
+    programHtml = callServiceApi('/Home/GetChannelLiveList', params )
+    channelUrl = common.parseDOM(programHtml, "a", attrs = { 'class' : 'sched-prog' }, ret = 'href')
+    return channelUrl[0]
+
+def playEpisode(url, mode):
+    if mode == 5:
+        url = getPlayUrl(url)
     url = urllib.quote(url)
     errorCode = -1
     htmlData = ''
@@ -386,8 +392,8 @@ elif mode == 2:
     success = showShows(url)
 elif mode == 3:
     success = showEpisodes(url)
-elif mode == 4:
-    success = playEpisode(url)
+elif mode == 4 or mode == 5:
+    success = playEpisode(url, mode)
 elif mode == 10:
     success = showSubscribedCategories(url)
 elif mode == 11:
