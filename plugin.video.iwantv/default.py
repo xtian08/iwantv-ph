@@ -19,22 +19,52 @@ def showCategories():
     categories = [
         { 'name' : 'TV', 'url' : '/TV/Categories/1', 'mode' : 1 },
         { 'name' : 'Movies', 'url' : '/Movies/Categories/2', 'mode' : 1 },
-        { 'name' : 'Others', 'url' : '/TV/Categories/3', 'mode' : 1 },
+        { 'name' : 'Live', 'url' : '/TV/Channel/3', 'mode' : 1 },
     ]
     for c in categories:
         addDir(c['name'], c['url'], c['mode'], 'icon.png')
     return True
 
-def showSubCategories(url):
-    subCatList = getFromCache(url)
+def getSubCategories(url, htmlData):
+    subCatListKey = 'subcatlist:v1:' + url
+    subCatList = getFromCache(subCatListKey)
     if subCatList == None:
-        htmlData = callServiceApi(url)
         subCatOuterHtml = common.parseDOM(htmlData, "ul", attrs = {'class' : 'movie-categories-list'})
         subCatList = common.parseDOM(subCatOuterHtml[0], "li", ret = 'name')
-        setToCache(url, subCatList)
-    typeId = url[-1:]
-    for s in subCatList:
-        addDir(s, r'{"TypeID":%s,"GenreID":"%s"}' % (typeId, s), 2, 'icon.png')
+        setToCache(subCatListKey, subCatList)
+    return subCatList
+
+def getLiveChannelDetails(url, htmlData):
+    liveChannelDetailsKey = '%s:chaneldetails:v1' % url
+    liveChannelDetails = getFromCache(liveChannelDetailsKey)
+    if liveChannelDetails == None:
+        liveChannelDetails = {}
+        subCatOuterHtml = common.parseDOM(htmlData, "ul", attrs = {'class' : 'movie-categories-list'})
+        groupIds = common.parseDOM(subCatOuterHtml[0], "li", ret = 'groupid')
+        for groupId in groupIds:
+            channelName = common.parseDOM(subCatOuterHtml[0], "li", attrs = { 'groupid' : groupId }, ret = 'name')
+            channelDetailsHtml = common.parseDOM(subCatOuterHtml[0], "li", attrs = { 'groupid' : groupId })
+            imgUrl = common.parseDOM(channelDetailsHtml[0], "img", ret = 'src')
+            programHtml = callServiceApi('/Home/GetChannelLiveList', params = { 'groupid' : groupId, 'day' : 'Sunday' } )
+            channelUrl = common.parseDOM(programHtml, "a", attrs = { 'class' : 'sched-prog' }, ret = 'href')
+            liveChannelDetails[channelName[0]] = (channelUrl[0], imgUrl[0])
+        setToCache(liveChannelDetailsKey, liveChannelDetails)
+    return liveChannelDetails
+    
+def showSubCategories(url):
+    htmlDataCacheKey = 'html:v1:' + url
+    htmlData = getFromCache(htmlDataCacheKey)
+    if htmlData == None:
+        htmlData = callServiceApi(url)
+    subCatList = getSubCategories(url, htmlData)
+    if url == liveShowsPath:
+        liveChannelDetails = getLiveChannelDetails(url, htmlData)
+        for k, v in liveChannelDetails.iteritems():
+            addDir(k, v[0], 4, v[1])
+    else:
+        typeId = url[-1:]
+        for s in subCatList:
+            addDir(s, r'{"TypeID":%s,"GenreID":"%s"}' % (typeId, s), 2, '')
     return True
         
 def showShows(url):
@@ -323,6 +353,7 @@ thumbnail = ''
 brightCoveToken = 'f9c60da6432f7642249592a9d2669046515cb302'
 cacheExpirySeconds = int(xbmcplugin.getSetting(thisPlugin,'cacheHours')) * 60 * 60
 isCacheEnabled = True if xbmcplugin.getSetting(thisPlugin,'isCacheEnabled') == 'true' else False
+liveShowsPath = '/TV/Channel/3'
 
 
 try:
