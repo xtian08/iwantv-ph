@@ -4,7 +4,8 @@ from lib.SimpleCache import SimpleCache
 
 import CommonFunctions
 common = CommonFunctions
-common.plugin = xbmcaddon.Addon().getAddonInfo('name')
+thisAddon = xbmcaddon.Addon()
+common.plugin = thisAddon.getAddonInfo('name')
 
 # common.dbg = True # Default
 # common.dbglevel = 3 # Default
@@ -23,7 +24,7 @@ def showCategories():
     ]
     for c in categories:
         addDir(c['name'], c['url'], c['mode'], 'icon.png')
-    return True
+    xbmcplugin.endOfDirectory(thisPlugin)
 
 def getSubCategories(url, htmlData):
     subCatListKey = 'subcatlist:v1:' + url
@@ -58,12 +59,12 @@ def showSubCategories(url):
     if url == liveShowsPath:
         liveChannelDetails = getLiveChannelDetails(url, htmlData)
         for k, v in liveChannelDetails.iteritems():
-            addDir(k, v[0], 5, v[1])
+            addDir(k, v[0], 5, v[1], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
     else:
         typeId = url[-1:]
         for s in subCatList:
             addDir(s, r'{"TypeID":%s,"GenreID":"%s"}' % (typeId, s), 2, '')
-    return True
+    xbmcplugin.endOfDirectory(thisPlugin)
         
 def showShows(url):
     htmlData = ''
@@ -71,7 +72,7 @@ def showShows(url):
     cacheKey = url
     headers = [('Content-type', 'application/x-www-form-urlencoded'), ('X-Requested-With', 'XMLHttpRequest')]
     params = json.loads(url)
-    for i in range(int(xbmcplugin.getSetting(thisPlugin,'loginRetries')) + 1):
+    for i in range(int(thisAddon.getSetting('loginRetries')) + 1):
         showsHtml = getFromCache(cacheKey)
         if showsHtml == None or len(showsHtml) == 0:
             htmlData = callServiceApi('/Viewmore/GetList', params, headers)
@@ -90,19 +91,20 @@ def showShows(url):
             showUrl = common.parseDOM(spanTitle[0], "a" , ret = 'href')
             showThumbnail = common.parseDOM(showInfo, "img" , ret = 'src')
             if params['TypeID'] == 2 or params['TypeID'] == 3:
-                addDir(showTitle[0].encode('utf8'), showUrl[0], 4, showThumbnail[0])
+                addDir(showTitle[0].encode('utf8'), showUrl[0], 4, showThumbnail[0], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
             else:
                 addDir(showTitle[0].encode('utf8'), showUrl[0], 3, showThumbnail[0])
     if hasShows == False:
         dialog = xbmcgui.Dialog()
         dialog.ok("No Shows", "No shows found.")
-    return hasShows
+    else:
+        xbmcplugin.endOfDirectory(thisPlugin)
         
 def showEpisodes(url):
     url = urllib.quote(url)
     episodesHtml = []
     htmlData = ''
-    for i in range(int(xbmcplugin.getSetting(thisPlugin,'loginRetries')) + 1):
+    for i in range(int(thisAddon.getSetting('loginRetries')) + 1):
         #episodesHtml = getFromCache(url)
         #if episodesHtml == None:
         htmlData = callServiceApi(url)
@@ -130,11 +132,12 @@ def showEpisodes(url):
         title = common.parseDOM(e, "span", attrs = { 'class' : 'video-adate'})
         url = common.parseDOM(e, "a", attrs = { 'class' : 'btn-play-blue playbtn'}, ret = 'href')
         thumbnail = common.parseDOM(e, "img", ret = 'src')
+        kwargs = { 'listProperties' : { 'IsPlayable' : 'true' } }
         if len(thumbnail) <= 0:
-            addDir(title[0], url[0], 4, '')
+            addDir(title[0], url[0], 4, '', isFolder = False, **kwargs)
         else:
-            addDir(title[0], url[0], 4, thumbnail[0])
-    return True
+            addDir(title[0], url[0], 4, thumbnail[0], isFolder = False, **kwargs)
+    xbmcplugin.endOfDirectory(thisPlugin)
 
 def getPlayUrl(jsonParams):
     params = json.loads(jsonParams)
@@ -154,7 +157,7 @@ def playEpisode(url, mode):
     linkBaseURL = None
     videoPlayer = None
     episodeDetails = {}
-    for i in range(int(xbmcplugin.getSetting(thisPlugin,'loginRetries')) + 1):
+    for i in range(int(thisAddon.getSetting('loginRetries')) + 1):
         htmlData = callServiceApi(url)
         videoHint = common.parseDOM(htmlData, "div", attrs = {'class' : 'video-page-player'})
         playerKey = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerKey'}, ret = 'value')
@@ -174,7 +177,7 @@ def playEpisode(url, mode):
                 return False
     from lib.brightcove import BrightCove
     brightCove = BrightCove(brightCoveToken, playerKey[0], playerID[0])
-    xForwardedForIp = xbmcplugin.getSetting(thisPlugin,'xForwardedForIp')
+    xForwardedForIp = thisAddon.getSetting('xForwardedForIp')
     headers = [('X-Forwarded-For', xForwardedForIp)]
     # kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
     kwargs = {'headers' : headers }
@@ -200,17 +203,17 @@ def playEpisode(url, mode):
         pattern = re.compile(r'/live/&(.+)')
     m = pattern.search(videoUrl)
     playPath = m.group(1)
-    liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
-    liz.setInfo( type="Video", infoLabels = { "Title": name } )
-    liz.setProperty('app', app)
-    liz.setProperty('PlayPath', playPath)
     if app == 'ondemand':
         videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
     if app == 'live':
         #liz.setProperty('live', '1')
         videoUrl = videoUrl + ' live=1 app=live playPath=' + playPath + ' swfUrl=' + 'http://admin.brightcove.com/viewer/us20130222.1010/BrightcoveBootloader.swf'
-    xbmc.Player().play(videoUrl, liz)
-    return False
+    liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail, path = videoUrl)
+    liz.setInfo( type="Video", infoLabels = { "Title": name } )
+    liz.setProperty('app', app)
+    liz.setProperty('PlayPath', playPath)
+    liz.setProperty('IsPlayable', 'true')
+    return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
 
 def callServiceApi(path, params = {}, headers = [], opener = None):
     if opener == None:
@@ -228,15 +231,15 @@ def callServiceApi(path, params = {}, headers = [], opener = None):
     
 def login():
     cookieJar.clear()
-    emailAddress = xbmcplugin.getSetting(thisPlugin,'emailAddress')
-    password = xbmcplugin.getSetting(thisPlugin,'password')
+    emailAddress = thisAddon.getSetting('emailAddress')
+    password = thisAddon.getSetting('password')
     formdata = { "email" : emailAddress, "password": password }
     callServiceApi("/Account/UserLoginAjax", formdata)
     cookieJar.save(ignore_discard = True, ignore_expires = True)
     
 def checkAccountChange():
-    emailAddress = xbmcplugin.getSetting(thisPlugin,'emailAddress')
-    password = xbmcplugin.getSetting(thisPlugin,'password')
+    emailAddress = thisAddon.getSetting('emailAddress')
+    password = thisAddon.getSetting('password')
     hash = hashlib.sha1(emailAddress + password).hexdigest()
     hashFile = os.path.join(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile')), 'a.tmp')
     savedHash = ''
@@ -294,7 +297,7 @@ def setToCache(key, value):
 def cleanCache(force = False):
     try:
         if isCacheEnabled:
-            purgeAfterSeconds = int(xbmcplugin.getSetting(thisPlugin,'purgeAfterDays')) * 24 * 60 * 60
+            purgeAfterSeconds = int(thisAddon.getSetting('purgeAfterDays')) * 24 * 60 * 60
             if force:
                 purgeAfterSeconds = 0
             return SimpleCache(cacheExpirySeconds).cleanCache(purgeAfterSeconds)
@@ -320,16 +323,15 @@ def getParams():
                             param[splitparams[0]]=splitparams[1]
     return param
 
-def addLink(name,url,title,iconimage):
-    liz=xbmcgui.ListItem(name, iconImage="DefaultVideo.png", thumbnailImage=iconimage)
-    liz.setInfo( type="Video", infoLabels={ "Title": title } )
-    return xbmcplugin.addDirectoryItem(handle=thisPlugin,url=url,listitem=liz)
-
-def addDir(name, url, mode, thumbnail, page = 1):
+def addDir(name, url, mode, thumbnail, page = 1, isFolder = True, **kwargs):
     u=sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+str(mode)+"&name="+urllib.quote_plus(name)+"&page="+str(page)+"&thumbnail="+urllib.quote_plus(thumbnail)
     liz=xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=thumbnail)
     liz.setInfo( type="Video", infoLabels={ "Title": name } )
-    return xbmcplugin.addDirectoryItem(handle=thisPlugin,url=u,listitem=liz,isFolder=True)
+    for k, v in kwargs.iteritems():
+        if k == 'listProperties':
+            for listPropertyKey, listPropertyValue in v.iteritems():
+                liz.setProperty(listPropertyKey, listPropertyValue)
+    return xbmcplugin.addDirectoryItem(handle=thisPlugin,url=u,listitem=liz,isFolder=isFolder)
 
 
 thisPlugin = int(sys.argv[1])
@@ -357,8 +359,8 @@ mode=None
 page=1
 thumbnail = ''
 brightCoveToken = 'f9c60da6432f7642249592a9d2669046515cb302'
-cacheExpirySeconds = int(xbmcplugin.getSetting(thisPlugin,'cacheHours')) * 60 * 60
-isCacheEnabled = True if xbmcplugin.getSetting(thisPlugin,'isCacheEnabled') == 'true' else False
+cacheExpirySeconds = int(thisAddon.getSetting('cacheHours')) * 60 * 60
+isCacheEnabled = True if thisAddon.getSetting('isCacheEnabled') == 'true' else False
 liveShowsPath = '/TV/Channel/3'
 
 
@@ -383,25 +385,18 @@ try:
 except:
     pass
     
-success = False
 if mode == None or url == None or len(url) < 1:
-    success = showCategories()
+    showCategories()
 elif mode == 1:
-    success = showSubCategories(url)
+    showSubCategories(url)
 elif mode == 2:
-    success = showShows(url)
+    showShows(url)
 elif mode == 3:
-    success = showEpisodes(url)
+    showEpisodes(url)
 elif mode == 4 or mode == 5:
-    success = playEpisode(url, mode)
+    playEpisode(url, mode)
 elif mode == 10:
-    success = showSubscribedCategories(url)
+    showSubscribedCategories(url)
 elif mode == 11:
-    success = showSubscribedShows(url)
+    showSubscribedShows(url)
 
-if success == True:
-    xbmcplugin.endOfDirectory(thisPlugin)
-
-
-# if cookiejartype == 'LWPCookieJar':
-    # cookieJar.save(ignore_discard = True, ignore_expires = True)
