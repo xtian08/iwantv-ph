@@ -195,13 +195,15 @@ def playEpisode(url, mode):
     import re
     pattern = ''
     app = ''
+    print videoUrl
     if r'/ondemand/' in videoUrl:
         app = 'ondemand'
-        pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)\?')
+        pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)')
     else:
         app = 'live'
         pattern = re.compile(r'/live/&(.+)')
     m = pattern.search(videoUrl)
+    print m
     playPath = m.group(1)
     if app == 'ondemand':
         videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
