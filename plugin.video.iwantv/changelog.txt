@@ -1,3 +1,5 @@
+0.0.8
+    Fix for url changes
 0.0.7
     Watched shows are now marked
 0.0.6
