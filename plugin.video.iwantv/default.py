@@ -177,10 +177,14 @@ def playEpisode(url, mode):
                 return False
     from lib.brightcove import BrightCove
     brightCove = BrightCove(brightCoveToken, playerKey[0], playerID[0])
+    isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
     xForwardedForIp = thisAddon.getSetting('xForwardedForIp')
-    headers = [('X-Forwarded-For', xForwardedForIp)]
-    # kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
-    kwargs = {'headers' : headers }
+    kwargs = {}
+    headers = []
+    if isXfwdForEnabled:
+        headers = [('X-Forwarded-For', xForwardedForIp)]
+        kwargs = {'headers' : headers }
+        kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
     # brightCoveData = brightCove.getBrightCoveData(linkBaseURL[0], videoPlayer[0].replace('ref:', ''), userAgent, **{'headers' : headers})
     brightCoveData = None
     if len(linkBaseURL) > 0:
@@ -191,30 +195,62 @@ def playEpisode(url, mode):
         brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, videoPlayer[0].replace('ref:', ''), userAgent, **kwargs)
     else:
         brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer[0], userAgent = userAgent, **kwargs)
-    videoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
-    import re
-    pattern = ''
-    app = ''
-    print videoUrl
-    if r'/ondemand/' in videoUrl:
-        app = 'ondemand'
-        pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)')
+    defaultVideoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
+    videoQuality = int(thisAddon.getSetting('videoQuality'))
+    videoUrl = None
+    isHlsEnabled = True if thisAddon.getSetting('isHlsEnabled') == 'true' else False
+    videoEncodings = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
+    if isHlsEnabled:
+        hlsUrl = [v['defaultURL'] for v in videoEncodings if v['encodingRate'] == 0]
+        if hlsUrl:
+            videoUrl = hlsUrl[0]
     else:
-        app = 'live'
-        pattern = re.compile(r'/live/&(.+)')
-    m = pattern.search(videoUrl)
-    print m
-    playPath = m.group(1)
-    if app == 'ondemand':
-        videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
-    if app == 'live':
-        #liz.setProperty('live', '1')
-        videoUrl = videoUrl + ' live=1 app=live playPath=' + playPath + ' swfUrl=' + 'http://admin.brightcove.com/viewer/us20130222.1010/BrightcoveBootloader.swf'
-    liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail, path = videoUrl)
+        if videoQuality == 0:
+            matchedBitRate = -1
+            for videoProperties in videoEncodings:
+                if videoProperties['encodingRate'] > 0 and (matchedBitRate == -1 or videoProperties['encodingRate'] < matchedBitRate):
+                    matchedBitRate = videoProperties['encodingRate']
+                    videoUrl = videoProperties['defaultURL']
+        elif videoQuality == 1:
+            videoUrl = defaultVideoUrl
+        elif videoQuality == 2:
+            matchedBitRate = -1
+            for videoProperties in videoEncodings:
+                if videoProperties['encodingRate'] > matchedBitRate:
+                    matchedBitRate = videoProperties['encodingRate']
+                    videoUrl = videoProperties['defaultURL']
+        else:
+            videoUrl = defaultVideoUrl
+    if videoUrl is None:
+        videoUrl = defaultVideoUrl
+    liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
     liz.setInfo( type="Video", infoLabels = { "Title": name } )
-    liz.setProperty('app', app)
-    liz.setProperty('PlayPath', playPath)
-    liz.setProperty('IsPlayable', 'true')
+    if videoUrl.endswith('m3u8'):
+        pass
+    else:
+        import re
+        pattern = ''
+        app = ''
+        if r'/ondemand/' in videoUrl:
+            app = 'ondemand'
+            pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)')
+        else:
+            app = 'live'
+            pattern = re.compile(r'/live/&(.+)')
+        m = pattern.search(videoUrl)
+        playPath = ''
+        if m:
+            playPath = m.group(1)
+        if app == 'ondemand':
+            videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
+        if app == 'live':
+            #liz.setProperty('live', '1')
+            videoUrl = videoUrl + ' live=1 app=live playPath=' + playPath + ' swfUrl=' + 'http://admin.brightcove.com/viewer/us20130222.1010/BrightcoveBootloader.swf'
+            
+        liz.setProperty('app', app)
+        liz.setProperty('PlayPath', playPath)
+        liz.setProperty('IsPlayable', 'true')
+    liz.setPath(videoUrl)
     return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
 
 def callServiceApi(path, params = {}, headers = [], opener = None):

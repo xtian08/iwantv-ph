@@ -2,14 +2,17 @@
 <strings>
     <string id="50100">Settings</string>
     <string id="50101">Any Philippine IP (Leave blank to auto generate)</string>
+    <string id="50102">I am outside the Philippines</string>
     <string id="50200">iWantv Account</string>
     <string id="50201">Email Address</string>
     <string id="50202">Password</string>
+    <string id="50203">Login Retries</string>
     <string id="50300">Cache Settings</string>
     <string id="50301">Cache expiration (Hours)</string>
     <string id="50302">Purge every (Days)</string>
     <string id="50303">Enable Caching</string>
-    <string id="50203">Login Retries</string>
+    <string id="50401">Video Quality</string>
+    <string id="50402">Use HLS if available (Video quality adjusts to network speed)</string>
     <string id="56000">Login Failed</string>
 </strings>
 
