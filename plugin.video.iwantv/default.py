@@ -184,7 +184,7 @@ def playEpisode(url, mode):
     if isXfwdForEnabled:
         headers = [('X-Forwarded-For', xForwardedForIp)]
         kwargs = {'headers' : headers }
-        kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
+        #kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
     # brightCoveData = brightCove.getBrightCoveData(linkBaseURL[0], videoPlayer[0].replace('ref:', ''), userAgent, **{'headers' : headers})
     brightCoveData = None
     if len(linkBaseURL) > 0:

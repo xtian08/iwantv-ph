@@ -1,3 +1,5 @@
+0.0.10
+    Bugfix for items not playing
 0.0.9
     Added feature for selecting video quality
 0.0.8
