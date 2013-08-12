@@ -178,13 +178,15 @@ def playEpisode(url, mode):
     from lib.brightcove import BrightCove
     brightCove = BrightCove(brightCoveToken, playerKey[0], playerID[0])
     isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
-    xForwardedForIp = thisAddon.getSetting('xForwardedForIp')
     kwargs = {}
     headers = []
     if isXfwdForEnabled:
-        headers = [('X-Forwarded-For', xForwardedForIp)]
+        headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
         kwargs = {'headers' : headers }
         #kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
+    isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
+    if isProxyEnabled:
+        kwargs['proxy'] = thisAddon.getSetting('proxyAddress')
     # brightCoveData = brightCove.getBrightCoveData(linkBaseURL[0], videoPlayer[0].replace('ref:', ''), userAgent, **{'headers' : headers})
     brightCoveData = None
     if len(linkBaseURL) > 0:

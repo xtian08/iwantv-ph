@@ -1,8 +1,6 @@
 ﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <strings>
     <string id="50100">Settings</string>
-    <string id="50101">Any Philippine IP (Leave blank to auto generate)</string>
-    <string id="50102">I am outside the Philippines</string>
     <string id="50200">iWantv Account</string>
     <string id="50201">Email Address</string>
     <string id="50202">Password</string>
@@ -13,6 +11,11 @@
     <string id="50303">Enable Caching</string>
     <string id="50401">Video Quality</string>
     <string id="50402">Use HLS if available (Video quality adjusts to network speed)</string>
+    <string id="50500">Network Settings</string>
+    <string id="50501">Any Philippine IP (Leave blank to auto generate)</string>
+    <string id="50502">I am outside the Philippines</string>
+    <string id="50511">Enable Proxy</string>
+    <string id="50512">Proxy Address</string>
     <string id="56000">Login Failed</string>
 </strings>
 
