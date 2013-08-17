@@ -76,6 +76,9 @@ def showShows(url):
         showsHtml = getFromCache(cacheKey)
         if showsHtml == None or len(showsHtml) == 0:
             htmlData = callServiceApi('/Viewmore/GetList', params, headers)
+            if htmlData.find(r'</li>') == -1:
+                import re
+                htmlData = re.sub(r"(<span class='video-ep'>.+?</span>)", r'\1</div></li>', htmlData)
             showsHtml = common.parseDOM(htmlData, "li")
             setToCache(cacheKey, showsHtml)
         if len(showsHtml) > 0:
