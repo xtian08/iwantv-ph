@@ -258,6 +258,7 @@ def playEpisode(url, mode):
 def callServiceApi(path, params = {}, headers = [], opener = None):
     if opener == None:
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
+        #opener = urllib2.build_opener(urllib2.ProxyHandler({'http': '127.0.0.1:8888'}), urllib2.HTTPCookieProcessor(cookieJar))
     else:
         urllib2.install_opener(opener)
     headers.append(('User-Agent', userAgent))
@@ -273,7 +274,7 @@ def login():
     cookieJar.clear()
     emailAddress = thisAddon.getSetting('emailAddress')
     password = thisAddon.getSetting('password')
-    formdata = { "email" : emailAddress, "password": password }
+    formdata = { "loginID" : emailAddress, "password": password }
     callServiceApi("/Account/UserLoginAjax", formdata)
     cookieJar.save(ignore_discard = True, ignore_expires = True)
     
