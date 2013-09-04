@@ -147,6 +147,70 @@ def getPlayUrl(jsonParams):
     programHtml = callServiceApi('/Home/GetChannelLiveList', params )
     channelUrl = common.parseDOM(programHtml, "a", attrs = { 'class' : 'sched-prog' }, ret = 'href')
     return channelUrl[0]
+    
+def getQualityVideoUrl(brightCoveEncodings):
+    videoQuality = int(thisAddon.getSetting('videoQuality'))
+    videoUrl = None
+    isHlsEnabled = True if thisAddon.getSetting('isHlsEnabled') == 'true' else False
+    
+    if isHlsEnabled:
+        hlsUrl = [v['defaultURL'] for v in brightCoveEncodings if '.m3u8' in v['defaultURL']]
+        if hlsUrl:
+            videoUrl = hlsUrl[0]
+    else:
+        videoEncodings = {}
+        for v in brightCoveEncodings:
+            if '.m3u8' not in v['defaultURL']:
+                videoEncodings[v['encodingRate']] = v['defaultURL']
+        sortedEncodingRates = sorted(videoEncodings.keys())
+        if videoQuality == 2: # high
+            videoUrl = videoEncodings[max(sortedEncodingRates)]
+        elif videoQuality == 0: #low
+            videoUrl = videoEncodings[min(sortedEncodingRates)]
+        else: # medium
+            # we'll consider the next one from the highest encoding as medium
+            if len(sortedEncodingRates) > 1:
+                sortedEncodingRates.remove(max(sortedEncodingRates))
+                videoUrl = videoEncodings[max(sortedEncodingRates)]
+            else:
+                videoUrl = videoEncodings[max(sortedEncodingRates)]
+    return videoUrl
+    
+def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerID, videoPlayer, isMyExperience, publisherId):
+    from lib.brightcove import BrightCove
+    isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
+    kwargs = {}
+    headers = []
+    if isXfwdForEnabled:
+        headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
+        kwargs = {'headers' : headers }
+    isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
+    if isProxyEnabled:
+        kwargs['proxy'] = thisAddon.getSetting('proxyAddress')
+    brightCoveData = None
+    isSafeNetworkBypass = True if thisAddon.getSetting('isSafeNetworkBypass') == 'true' else False
+    defaultVideoUrl = ''
+    videoRenditions = None
+    if isSafeNetworkBypass:
+        brightCove = BrightCove(brightCoveToken, playerKey, playerID)
+        if videoPlayer.startswith('ref:'):
+            brightCoveData = brightCove.findMediaByReferenceId(int(playerID), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
+        else:
+            brightCoveData = brightCove.findMediaById(int(playerID), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
+        defaultVideoUrl = brightCoveData['FLVFullLengthURL']
+        videoRenditions = brightCoveData['renditions']
+    else:
+        brightCove = BrightCove(brightCoveToken, playerKey, playerID)
+        if isMyExperience:
+            brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, videoPlayer.replace('ref:', ''), userAgent, **kwargs)
+        else:
+            brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer, userAgent = userAgent, **kwargs)
+        defaultVideoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
+        videoRenditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
+    videoUrl = getQualityVideoUrl(videoRenditions)
+    if videoUrl is None:
+        videoUrl = defaultVideoUrl
+    return videoUrl
 
 def playEpisode(url, mode):
     if mode == 5:
@@ -178,56 +242,15 @@ def playEpisode(url, mode):
                 dialog = xbmcgui.Dialog()
                 dialog.ok("Premium Content", "You need a premium account to access this item.", 'You can upgrade your subscription via the iWantv website.')
                 return False
-    from lib.brightcove import BrightCove
-    brightCove = BrightCove(brightCoveToken, playerKey[0], playerID[0])
-    isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
-    kwargs = {}
-    headers = []
-    if isXfwdForEnabled:
-        headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
-        kwargs = {'headers' : headers }
-        #kwargs = {'headers' : headers, 'proxy' : '127.0.0.1:8888' }
-    isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
-    if isProxyEnabled:
-        kwargs['proxy'] = thisAddon.getSetting('proxyAddress')
-    # brightCoveData = brightCove.getBrightCoveData(linkBaseURL[0], videoPlayer[0].replace('ref:', ''), userAgent, **{'headers' : headers})
-    brightCoveData = None
+    videoBaseUrl = ''
     if len(linkBaseURL) > 0:
         videoBaseUrl = linkBaseURL[0]
     else:
         videoBaseUrl = baseUrl + url
+    isMyExperience = False
     if len(myExperience) > 0 and myExperience[0] == 'myExperience':
-        brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, videoPlayer[0].replace('ref:', ''), userAgent, **kwargs)
-    else:
-        brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer[0], userAgent = userAgent, **kwargs)
-    defaultVideoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
-    videoQuality = int(thisAddon.getSetting('videoQuality'))
-    videoUrl = None
-    isHlsEnabled = True if thisAddon.getSetting('isHlsEnabled') == 'true' else False
-    videoEncodings = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
-    if isHlsEnabled:
-        hlsUrl = [v['defaultURL'] for v in videoEncodings if v['encodingRate'] == 0]
-        if hlsUrl:
-            videoUrl = hlsUrl[0]
-    else:
-        if videoQuality == 0:
-            matchedBitRate = -1
-            for videoProperties in videoEncodings:
-                if videoProperties['encodingRate'] > 0 and (matchedBitRate == -1 or videoProperties['encodingRate'] < matchedBitRate):
-                    matchedBitRate = videoProperties['encodingRate']
-                    videoUrl = videoProperties['defaultURL']
-        elif videoQuality == 1:
-            videoUrl = defaultVideoUrl
-        elif videoQuality == 2:
-            matchedBitRate = -1
-            for videoProperties in videoEncodings:
-                if videoProperties['encodingRate'] > matchedBitRate:
-                    matchedBitRate = videoProperties['encodingRate']
-                    videoUrl = videoProperties['defaultURL']
-        else:
-            videoUrl = defaultVideoUrl
-    if videoUrl is None:
-        videoUrl = defaultVideoUrl
+        isMyExperience = True
+    videoUrl = getVideoUrl(videoBaseUrl, brightCoveToken, playerKey[0], playerID[0], videoPlayer[0], isMyExperience, publisherId)
     liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
     liz.setInfo( type="Video", infoLabels = { "Title": name } )
     if videoUrl.endswith('m3u8'):
@@ -403,10 +426,10 @@ mode=None
 page=1
 thumbnail = ''
 brightCoveToken = 'f9c60da6432f7642249592a9d2669046515cb302'
+publisherId = 1213020456001
 cacheExpirySeconds = int(thisAddon.getSetting('cacheHours')) * 60 * 60
 isCacheEnabled = True if thisAddon.getSetting('isCacheEnabled') == 'true' else False
 liveShowsPath = '/TV/Channel/3'
-
 
 try:
     url=urllib.unquote_plus(params["url"])

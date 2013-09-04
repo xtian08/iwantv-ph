@@ -9,8 +9,9 @@
         <setting id="isHlsEnabled" label="50402" type="bool" default="true" />
     </category>
     <category label="50500">
-        <setting id="isXfwdForEnabled" label="50502" type="bool" default="true" />
-        <setting id="xForwardedForIp" type="text" label="50501" default="" enable="eq(-1,true)"/>
+        <setting id="isSafeNetworkBypass" label="50513" type="bool" default="true" />
+        <setting id="isXfwdForEnabled" label="50502" type="bool" default="false" />
+        <setting id="xForwardedForIp" type="ipaddress" label="50501" default="" enable="eq(-1,true)"/>
         <setting id="isProxyEnabled" label="50511" type="bool" default="false" />
         <setting id="proxyAddress" type="text" label="50512" default="" enable="eq(-1,true)"/>
     </category>

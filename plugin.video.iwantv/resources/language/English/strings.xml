@@ -16,6 +16,7 @@
     <string id="50502">I am outside the Philippines</string>
     <string id="50511">Enable Proxy</string>
     <string id="50512">Proxy Address</string>
+    <string id="50513">Use Safe Network Bypass (No need to set a Philippine IP)</string>
     <string id="56000">Login Failed</string>
 </strings>
 
