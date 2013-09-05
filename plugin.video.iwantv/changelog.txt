@@ -1,3 +1,8 @@
+0.0.14
+    Fix for videos not playing in some networks
+    Better video quality selection handling
+    Improvements
+    Bugfixes
 0.0.13
     Fix for missing tags in website
 0.0.12
