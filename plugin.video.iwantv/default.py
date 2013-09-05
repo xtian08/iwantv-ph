@@ -12,7 +12,8 @@ common.plugin = thisAddon.getAddonInfo('name')
 
 def showCategories():
     accountChanged = checkAccountChange()
-    autoGenerateIp()
+    if not isXForwardedForIpValid():
+        autoGenerateIp()
     if accountChanged:
         cleanCache(True)
     else:
@@ -174,12 +175,14 @@ def getQualityVideoUrl(brightCoveEncodings):
                 videoUrl = videoEncodings[max(sortedEncodingRates)]
     return videoUrl
     
-def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerID, videoPlayer, isMyExperience, publisherId):
+def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer, isMyExperience, publisherId):
     from lib.brightcove import BrightCove
     isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
     kwargs = {}
     headers = []
     if isXfwdForEnabled:
+        if not isXForwardedForIpValid():
+            autoGenerateIp()
         headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
         kwargs = {'headers' : headers }
     isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
@@ -190,15 +193,15 @@ def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerID, videoPlayer,
     defaultVideoUrl = ''
     videoRenditions = None
     if isSafeNetworkBypass:
-        brightCove = BrightCove(brightCoveToken, playerKey, playerID)
+        brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
         if videoPlayer.startswith('ref:'):
-            brightCoveData = brightCove.findMediaByReferenceId(int(playerID), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
+            brightCoveData = brightCove.findMediaByReferenceId(int(playerId), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
         else:
-            brightCoveData = brightCove.findMediaById(int(playerID), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
+            brightCoveData = brightCove.findMediaById(int(playerId), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
         defaultVideoUrl = brightCoveData['FLVFullLengthURL']
         videoRenditions = brightCoveData['renditions']
     else:
-        brightCove = BrightCove(brightCoveToken, playerKey, playerID)
+        brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
         if isMyExperience:
             brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, videoPlayer.replace('ref:', ''), userAgent, **kwargs)
         else:
@@ -320,26 +323,31 @@ def checkAccountChange():
             f.write(hash)
     return accountChanged
 
+def isXForwardedForIpValid():
+    xForwardedForIp = xbmcaddon.Addon().getSetting('xForwardedForIp').strip()
+    if xForwardedForIp == '0.0.0.0' or xForwardedForIp == '':
+        return False
+    return True
+    
 def autoGenerateIp():
-    if xbmcaddon.Addon().getSetting('xForwardedForIp').strip() == '':
-        ipRanges = [
-            (1848401920, 1848406015),
-            (1884172288, 1884176383),
-            (1931427840, 1931431935),
-            (2000617472, 2000621567),
-            (2070704128, 2070708223),
-        ]
-        from random import randint
-        startIpNumber, endIpNumber = ipRanges[randint(0, len(ipRanges) - 1)]
-        ipNumber = randint(startIpNumber, endIpNumber)
-        w = (ipNumber / 16777216) % 256
-        x = (ipNumber / 65536) % 256
-        y = (ipNumber / 256) % 256
-        z = (ipNumber) % 256
-        if z == 0: z = 1
-        if z == 255: z = 254
-        ipAddress = '%s.%s.%s.%s' % (w, x, y, z)
-        xbmcaddon.Addon().setSetting('xForwardedForIp', ipAddress)
+    ipRanges = [
+        (1848401920, 1848406015),
+        (1884172288, 1884176383),
+        (1931427840, 1931431935),
+        (2000617472, 2000621567),
+        (2070704128, 2070708223),
+    ]
+    from random import randint
+    startIpNumber, endIpNumber = ipRanges[randint(0, len(ipRanges) - 1)]
+    ipNumber = randint(startIpNumber, endIpNumber)
+    w = (ipNumber / 16777216) % 256
+    x = (ipNumber / 65536) % 256
+    y = (ipNumber / 256) % 256
+    z = (ipNumber) % 256
+    if z == 0: z = 1
+    if z == 255: z = 254
+    ipAddress = '%s.%s.%s.%s' % (w, x, y, z)
+    xbmcaddon.Addon().setSetting('xForwardedForIp', ipAddress)
     
 def getFromCache(key):
     try:
