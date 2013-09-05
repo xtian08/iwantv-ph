@@ -111,8 +111,6 @@ def showEpisodes(url):
         #episodesHtml = getFromCache(url)
         #if episodesHtml == None:
         htmlData = callServiceApi(url)
-        with(open(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile')) + r'/showEpisodes-%s.html' % (i), 'w')) as f:
-            f.write(htmlData)
         episodesHtml = common.parseDOM(htmlData, "div", attrs = { 'class' : 'video-other-episode'})
         if len(episodesHtml) == 0:
             login()
