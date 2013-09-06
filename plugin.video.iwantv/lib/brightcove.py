@@ -1,4 +1,4 @@
-import pyamf, httplib
+import pyamf
 from pyamf.remoting.client import RemotingService
 from pyamf import remoting, amf3, util
 
@@ -30,41 +30,72 @@ class BrightCove(object):
         self._amfUrl = serviceUrl + '?playerKey=' + playerKey
         pyamf.register_class(ViewerExperienceRequest, 'com.brightcove.experience.ViewerExperienceRequest')
         pyamf.register_class(ContentOverride, 'com.brightcove.experience.ContentOverride')
+        
+    def _buildAmfRequest(self, body, target):
+        env = remoting.Envelope(amfVersion = 3)
+        env.bodies.append(
+            (
+                "/1",
+                remoting.Request(
+                    target = target,
+                    body = body,
+                    envelope = env
+                )
+            )
+        )
+        return env
+        
+    def _sendAmfRequest(self, envelope, **kwargs):
+        body = remoting.encode(envelope).read()
+        headers = {'content-type': 'application/x-amf'}
+        proxy = []
+        for k, v in kwargs.iteritems():
+            if k == 'headers':
+                for header in v:
+                    headers[header[0]] = header[1]
+            if k == 'proxy':
+                hasProxy = True
+                if v.find(':'):
+                    proxyHost, proxyPort = v.split(':')
+                else:
+                    proxyHost = v
+                    proxyPort = '80'
+                proxy = [proxyHost, int(proxyPort)]
+        response = ''
+        try:
+            import httplib
+            conn = httplib.HTTPConnection('c.brightcove.com')
+            if proxy:
+                conn = httplib.HTTPConnection(proxyHost, proxyPort)
+            conn.request("POST", self._amfUrl, body, headers)
+            response = conn.getresponse().read()
+        except UnicodeDecodeError:
+            import lib.xhttplib as xhttplib
+            conn = xhttplib.HTTPConnection('c.brightcove.com')
+            if proxy:
+                conn = xhttplib.HTTPConnection(proxyHost, proxyPort)
+            conn.request("POST", self._amfUrl, body, headers)
+            response = conn.getresponse().read()
+        response = remoting.decode(response).bodies[0][1].body
+        return response
 
-    def getBrightCoveData(self, url, contentRefId, userAgent, contentId = 0, amfVersion = pyamf.AMF3, **kwargs):
-        #contentOverride = ContentOverride(contentRefId)
+    def getBrightCoveData(self, url, contentRefId, userAgent, contentId = 0, **kwargs):
         contentOverride = ContentOverride(contentRefId, contentId = contentId)
         viewerExperienceRequest = ViewerExperienceRequest(url, self._experienceId, [contentOverride], self._playerKey)
-        client = RemotingService(self._amfUrl, user_agent = userAgent, amf_version = amfVersion)
-        for k, v in kwargs.iteritems():
-            if k == 'headers':
-                for header in v:
-                    client.addHTTPHeader(header[0], header[1])
-            if k == 'proxy':
-                client.setProxy(v)
-        service = client.getService('com.brightcove.experience.ExperienceRuntimeFacade')
-        return service.getDataForExperience(self._token, viewerExperienceRequest)
+        envelope = self._buildAmfRequest(
+        [self._token, viewerExperienceRequest], 'com.brightcove.experience.ExperienceRuntimeFacade.getDataForExperience')
+        response = self._sendAmfRequest(envelope, **kwargs)
+        return response 
+
+    def findMediaById(self, playerId, videoPlayer, publisherId, userAgent, **kwargs):
+        envelope = self._buildAmfRequest(
+        [self._token, playerId, videoPlayer, publisherId], 'com.brightcove.player.runtime.PlayerMediaFacade.findMediaById')
+        response = self._sendAmfRequest(envelope, **kwargs)
+        return response
         
-    def findMediaById(self, playerId, videoPlayer, publisherId, userAgent, amfVersion = pyamf.AMF3, **kwargs):
-        client = RemotingService(self._amfUrl, user_agent = userAgent, amf_version = amfVersion)
-        service = client.getService('com.brightcove.player.runtime.PlayerMediaFacade')
-        for k, v in kwargs.iteritems():
-            if k == 'headers':
-                for header in v:
-                    client.addHTTPHeader(header[0], header[1])
-                    pass
-            if k == 'proxy':
-                client.setProxy(v)
-        return service.findMediaById(self._token, playerId, videoPlayer, publisherId)
-        
-    def findMediaByReferenceId(self, playerId, videoPlayer, publisherId, userAgent, amfVersion = pyamf.AMF3, **kwargs):
-        client = RemotingService(self._amfUrl, user_agent = userAgent, amf_version = amfVersion)
-        service = client.getService('com.brightcove.player.runtime.PlayerMediaFacade')
-        for k, v in kwargs.iteritems():
-            if k == 'headers':
-                for header in v:
-                    client.addHTTPHeader(header[0], header[1])
-                    pass
-            if k == 'proxy':
-                client.setProxy(v)
-        return service.findMediaByReferenceId(self._token, playerId, videoPlayer, publisherId)
+    def findMediaByReferenceId(self, playerId, videoPlayer, publisherId, userAgent, **kwargs):
+        envelope = self._buildAmfRequest(
+        [self._token, playerId, videoPlayer, publisherId], 'com.brightcove.player.runtime.PlayerMediaFacade.findMediaByReferenceId')
+        response = self._sendAmfRequest(envelope, **kwargs)
+        return response
+ 
