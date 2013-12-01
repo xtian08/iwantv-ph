@@ -150,22 +150,38 @@ def getPlayUrl(jsonParams):
 def getQualityVideoUrl(brightCoveEncodings):
     videoQuality = int(thisAddon.getSetting('videoQuality'))
     videoUrl = None
-    isHlsEnabled = True if thisAddon.getSetting('isHlsEnabled') == 'true' else False
+    #isHlsEnabled = True if thisAddon.getSetting('isHlsEnabled') == 'true' else False
+    isHlsEnabled = False
     
     if isHlsEnabled:
-        hlsUrl = [v['defaultURL'] for v in brightCoveEncodings if '.m3u8' in v['defaultURL']]
-        if hlsUrl:
-            videoUrl = hlsUrl[0]
+        for v in brightCoveEncodings:
+            if v['encodingRate'] == 0:
+                return v['defaultURL']
     else:
         videoEncodings = {}
+        videoEncodingsMp4 = {}
         for v in brightCoveEncodings:
-            if '.m3u8' not in v['defaultURL']:
-                videoEncodings[v['encodingRate']] = v['defaultURL']
+            # don't include HLS
+            if v['encodingRate'] != 0:
+                # store MP4 streams separately (this will be streamed only if there are no other available streams
+                # these MP4 streams buffer first and don't immediately play the stream or something like that
+                if 'mp4.csmil' in v['defaultURL']:
+                    videoEncodingsMp4[v['encodingRate']] = v['defaultURL']
+                else:
+                    videoEncodings[v['encodingRate']] = v['defaultURL']
+        if not videoEncodings:
+            videoEncodings = videoEncodingsMp4
         sortedEncodingRates = sorted(videoEncodings.keys())
         if videoQuality == 2: # high
             videoUrl = videoEncodings[max(sortedEncodingRates)]
         elif videoQuality == 0: #low
-            videoUrl = videoEncodings[min(sortedEncodingRates)]
+            # using the lowest encoding does not work for IOSRenditions, we'll use the 2nd from the bottom
+            # videoUrl = videoEncodings[min(sortedEncodingRates)]
+            if len(sortedEncodingRates) > 1:
+                sortedEncodingRates.remove(min(sortedEncodingRates))
+                videoUrl = videoEncodings[min(sortedEncodingRates)]
+            else:
+                videoUrl = videoEncodings[min(sortedEncodingRates)]
         else: # medium
             # we'll consider the next one from the highest encoding as medium
             if len(sortedEncodingRates) > 1:
@@ -199,7 +215,11 @@ def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer,
         else:
             brightCoveData = brightCove.findMediaById(int(playerId), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
         defaultVideoUrl = brightCoveData['FLVFullLengthURL']
-        videoRenditions = brightCoveData['renditions']
+        renditions = brightCoveData['renditions']
+        videoRenditions = [r for r in renditions if not r['defaultURL'].startswith('rtmpe')]
+        if 'IOSRenditions' in brightCoveData:
+            for r in brightCoveData['IOSRenditions']:
+                videoRenditions.append(r)
     else:
         brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
         if isMyExperience:
@@ -207,7 +227,11 @@ def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer,
         else:
             brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer, userAgent = userAgent, **kwargs)
         defaultVideoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
-        videoRenditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
+        renditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
+        videoRenditions = [r for r in renditions if not r['defaultURL'].startswith('rtmpe')]
+        if 'IOSRenditions' in brightCoveData['programmedContent']['videoPlayer']['mediaDTO']:
+            for r in brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['IOSRenditions']:
+                videoRenditions.append(r)
     videoUrl = getQualityVideoUrl(videoRenditions)
     if videoUrl is None:
         videoUrl = defaultVideoUrl
@@ -254,9 +278,10 @@ def playEpisode(url, mode):
     videoUrl = getVideoUrl(videoBaseUrl, brightCoveToken, playerKey[0], playerID[0], videoPlayer[0], isMyExperience, publisherId)
     liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
     liz.setInfo( type="Video", infoLabels = { "Title": name } )
-    if videoUrl.endswith('m3u8'):
+    if 'm3u8' in videoUrl:
         pass
-    else:
+    elif videoUrl.startswith('rtmp'):
+        pass
         import re
         pattern = ''
         app = ''
@@ -279,6 +304,8 @@ def playEpisode(url, mode):
         liz.setProperty('app', app)
         liz.setProperty('PlayPath', playPath)
         liz.setProperty('IsPlayable', 'true')
+    else:
+        pass
     liz.setPath(videoUrl)
     return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
 

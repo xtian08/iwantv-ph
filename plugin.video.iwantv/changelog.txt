@@ -1,3 +1,6 @@
+0.0.16
+    Adjustments for newly introduced streams
+    Fix for HLS not working
 0.0.15
     Fix for some XBMC packages
 0.0.14
