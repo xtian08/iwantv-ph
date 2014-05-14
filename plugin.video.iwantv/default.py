@@ -171,6 +171,8 @@ def getQualityVideoUrl(brightCoveEncodings):
                     videoEncodings[v['encodingRate']] = v['defaultURL']
         if not videoEncodings:
             videoEncodings = videoEncodingsMp4
+        if not videoEncodings:
+            return None
         sortedEncodingRates = sorted(videoEncodings.keys())
         if videoQuality == 2: # high
             videoUrl = videoEncodings[max(sortedEncodingRates)]
