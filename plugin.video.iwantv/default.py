@@ -147,51 +147,42 @@ def getPlayUrl(jsonParams):
     channelUrl = common.parseDOM(programHtml, "a", attrs = { 'class' : 'sched-prog' }, ret = 'href')
     return channelUrl[0]
     
-def getQualityVideoUrl(brightCoveEncodings):
+def getQualityVideoUrl(renditions, iosRenditions):
     videoQuality = int(thisAddon.getSetting('videoQuality'))
+    videoRenditionType = thisAddon.getSetting('videoRenditionType')
+    liveStreamType = thisAddon.getSetting('liveStreamType')
+    videoRenditions = []
     videoUrl = None
-    #isHlsEnabled = True if thisAddon.getSetting('isHlsEnabled') == 'true' else False
-    isHlsEnabled = False
-    
-    if isHlsEnabled:
-        for v in brightCoveEncodings:
-            if v['encodingRate'] == 0:
-                return v['defaultURL']
+    if videoRenditionType.upper() == 'MOBILE' and iosRenditions is not None:
+        videoRenditions = iosRenditions
+    elif videoRenditionType.upper() == 'DESKTOP' and renditions is not None:
+        videoRenditions = renditions
+    if not videoRenditions:
+        # fallback, use available renditions
+        videoRenditions = iosRenditions
+        videoRenditions.extend(renditions)
+    liveStreams = [r for r in videoRenditions if r['size'] <= 0]
+    if liveStreams:
+        if liveStreamType.upper() == 'HLS':
+            return [s for s in liveStreams if s['defaultURL'].find('m3u8') > -1][0]['defaultURL']
+        else:
+            return [s for s in liveStreams if s['defaultURL'].find('m3u8') <= -1][0]['defaultURL']
     else:
         videoEncodings = {}
-        videoEncodingsMp4 = {}
-        for v in brightCoveEncodings:
-            # don't include HLS
-            if v['encodingRate'] != 0:
-                # store MP4 streams separately (this will be streamed only if there are no other available streams
-                # these MP4 streams buffer first and don't immediately play the stream or something like that
-                if 'mp4.csmil' in v['defaultURL']:
-                    videoEncodingsMp4[v['encodingRate']] = v['defaultURL']
-                else:
-                    videoEncodings[v['encodingRate']] = v['defaultURL']
-        if not videoEncodings:
-            videoEncodings = videoEncodingsMp4
-        if not videoEncodings:
-            return None
+        for v in videoRenditions:
+            videoEncodings[v['encodingRate']] = v['defaultURL']
         sortedEncodingRates = sorted(videoEncodings.keys())
         if videoQuality == 2: # high
-            videoUrl = videoEncodings[max(sortedEncodingRates)]
+            return videoEncodings[max(sortedEncodingRates)]
         elif videoQuality == 0: #low
-            # using the lowest encoding does not work for IOSRenditions, we'll use the 2nd from the bottom
-            # videoUrl = videoEncodings[min(sortedEncodingRates)]
-            if len(sortedEncodingRates) > 1:
-                sortedEncodingRates.remove(min(sortedEncodingRates))
-                videoUrl = videoEncodings[min(sortedEncodingRates)]
-            else:
-                videoUrl = videoEncodings[min(sortedEncodingRates)]
+            return videoEncodings[min(sortedEncodingRates)]
         else: # medium
             # we'll consider the next one from the highest encoding as medium
             if len(sortedEncodingRates) > 1:
                 sortedEncodingRates.remove(max(sortedEncodingRates))
-                videoUrl = videoEncodings[max(sortedEncodingRates)]
+                return videoEncodings[max(sortedEncodingRates)]
             else:
-                videoUrl = videoEncodings[max(sortedEncodingRates)]
-    return videoUrl
+                return videoEncodings[max(sortedEncodingRates)]
     
 def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer, isMyExperience, publisherId):
     from lib.brightcove import BrightCove
@@ -209,6 +200,8 @@ def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer,
     brightCoveData = None
     isSafeNetworkBypass = True if thisAddon.getSetting('isSafeNetworkBypass') == 'true' else False
     defaultVideoUrl = ''
+    renditions = []
+    iosRenditions = []
     videoRenditions = None
     if isSafeNetworkBypass:
         brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
@@ -218,10 +211,7 @@ def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer,
             brightCoveData = brightCove.findMediaById(int(playerId), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
         defaultVideoUrl = brightCoveData['FLVFullLengthURL']
         renditions = brightCoveData['renditions']
-        videoRenditions = [r for r in renditions if not r['defaultURL'].startswith('rtmpe')]
-        if 'IOSRenditions' in brightCoveData:
-            for r in brightCoveData['IOSRenditions']:
-                videoRenditions.append(r)
+        iosRenditions = brightCoveData['IOSRenditions']
     else:
         brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
         if isMyExperience:
@@ -230,11 +220,8 @@ def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer,
             brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer, userAgent = userAgent, **kwargs)
         defaultVideoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
         renditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
-        videoRenditions = [r for r in renditions if not r['defaultURL'].startswith('rtmpe')]
-        if 'IOSRenditions' in brightCoveData['programmedContent']['videoPlayer']['mediaDTO']:
-            for r in brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['IOSRenditions']:
-                videoRenditions.append(r)
-    videoUrl = getQualityVideoUrl(videoRenditions)
+        iosRenditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['IOSRenditions']
+    videoUrl = getQualityVideoUrl(renditions, iosRenditions)
     if videoUrl is None:
         videoUrl = defaultVideoUrl
     return videoUrl

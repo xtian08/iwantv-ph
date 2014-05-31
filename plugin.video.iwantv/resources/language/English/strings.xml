@@ -11,6 +11,8 @@
     <string id="50303">Enable Caching</string>
     <string id="50401">Video Quality</string>
     <string id="50402">Use HLS if available (Video quality adapts to network speed)</string>
+    <string id="50403">Video rendition type</string>
+    <string id="50404">Live stream type</string>
     <string id="50500">Network Settings</string>
     <string id="50501">Any Philippine IP (Set to "0.0.0.0" to auto-generate)</string>
     <string id="50502">I am outside the Philippines (Set a Philippine IP)</string>
