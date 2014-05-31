@@ -153,36 +153,37 @@ def getQualityVideoUrl(renditions, iosRenditions):
     liveStreamType = thisAddon.getSetting('liveStreamType')
     videoRenditions = []
     videoUrl = None
+    allRenditions = iosRenditions
+    allRenditions.extend(renditions)
+    liveStreams = [r for r in allRenditions if r['size'] <= 0]
+    if liveStreams:
+        if liveStreamType.upper() == 'HLS':
+            return [s for s in liveStreams if s['defaultURL'].find('m3u8') > -1][0]['defaultURL']
+        else:
+            return [s for s in liveStreams if s['defaultURL'].find('m3u8') <= -1][0]['defaultURL']
     if videoRenditionType.upper() == 'MOBILE' and iosRenditions is not None:
         videoRenditions = iosRenditions
     elif videoRenditionType.upper() == 'DESKTOP' and renditions is not None:
         videoRenditions = renditions
     if not videoRenditions:
         # fallback, use available renditions
-        videoRenditions = iosRenditions
-        videoRenditions.extend(renditions)
-    liveStreams = [r for r in videoRenditions if r['size'] <= 0]
-    if liveStreams:
-        if liveStreamType.upper() == 'HLS':
-            return [s for s in liveStreams if s['defaultURL'].find('m3u8') > -1][0]['defaultURL']
-        else:
-            return [s for s in liveStreams if s['defaultURL'].find('m3u8') <= -1][0]['defaultURL']
-    else:
-        videoEncodings = {}
-        for v in videoRenditions:
-            videoEncodings[v['encodingRate']] = v['defaultURL']
-        sortedEncodingRates = sorted(videoEncodings.keys())
-        if videoQuality == 2: # high
+        videoRenditions = allRenditions
+    
+    videoEncodings = {}
+    for v in videoRenditions:
+        videoEncodings[v['encodingRate']] = v['defaultURL']
+    sortedEncodingRates = sorted(videoEncodings.keys())
+    if videoQuality == 2: # high
+        return videoEncodings[max(sortedEncodingRates)]
+    elif videoQuality == 0: #low
+        return videoEncodings[min(sortedEncodingRates)]
+    else: # medium
+        # we'll consider the next one from the highest encoding as medium
+        if len(sortedEncodingRates) > 1:
+            sortedEncodingRates.remove(max(sortedEncodingRates))
             return videoEncodings[max(sortedEncodingRates)]
-        elif videoQuality == 0: #low
-            return videoEncodings[min(sortedEncodingRates)]
-        else: # medium
-            # we'll consider the next one from the highest encoding as medium
-            if len(sortedEncodingRates) > 1:
-                sortedEncodingRates.remove(max(sortedEncodingRates))
-                return videoEncodings[max(sortedEncodingRates)]
-            else:
-                return videoEncodings[max(sortedEncodingRates)]
+        else:
+            return videoEncodings[max(sortedEncodingRates)]
     
 def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer, isMyExperience, publisherId):
     from lib.brightcove import BrightCove
