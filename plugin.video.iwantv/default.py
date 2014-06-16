@@ -296,8 +296,18 @@ def playEpisode(url, mode):
         liz.setProperty('IsPlayable', 'true')
     else:
         pass
+    isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
+    videoUrl = '%s|X-Forwarded-For=%s' % (videoUrl, thisAddon.getSetting('xForwardedForIp')) if isXfwdForEnabled else videoUrl
     liz.setPath(videoUrl)
     return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
+    
+def showAnnouncement():
+    xbmc.executebuiltin("ActivateWindow(%d)" % (10147, ))
+    win = xbmcgui.Window(10147)
+    message = 'Live stream is now working for those who are outside the Philippines. You need to enable the "%s" setting. Don\'t worry about the IP. I will auto-generate it for you if you\'re not sure what to put in it.\n\nDon\'t know how or where to set it? Head over to the settings page of this addon by right-clicking the addon or by pressing "c" while the addon is highlighted or by long-pressing on the addon. Go to the "Network" page and enable it from there.' % xbmcaddon.Addon().getLocalizedString(50502)
+    xbmc.sleep(100)
+    win.getControl(1).setLabel(xbmcaddon.Addon().getLocalizedString(50701))
+    win.getControl(5).setText(message)
 
 def callServiceApi(path, params = {}, headers = [], opener = None):
     if opener == None:
@@ -490,3 +500,6 @@ elif mode == 10:
 elif mode == 11:
     showSubscribedShows(url)
 
+if thisAddon.getSetting('announcement') != thisAddon.getAddonInfo('version'):
+    showAnnouncement()
+    xbmcaddon.Addon().setSetting('announcement', thisAddon.getAddonInfo('version'))

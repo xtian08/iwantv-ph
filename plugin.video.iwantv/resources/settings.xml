@@ -9,6 +9,7 @@
         <setting id="isHlsEnabled" label="50402" type="bool" default="true" visible="false" />
         <setting id="videoRenditionType" type="labelenum" label="50403" default="Mobile" values="Mobile|Desktop" visible="true"/>
         <setting id="liveStreamType" type="labelenum" label="50404" default="HLS" values="HLS|HDS" visible="true"/>
+        <setting id="announcement" type="text" label="50701" default="" visible="false"/>
     </category>
     <category label="50500">
         <setting id="isSafeNetworkBypass" label="50513" type="bool" default="true" />
