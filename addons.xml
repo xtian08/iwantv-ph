@@ -2,7 +2,7 @@
 <addons>
     <addon id="plugin.video.iwantv"
            name="iWantv"
-           version="0.0.21"
+           version="0.0.22"
            provider-name="todits.xbmc">
       <requires>
         <import addon="xbmc.python" version="2.1.0"/>
