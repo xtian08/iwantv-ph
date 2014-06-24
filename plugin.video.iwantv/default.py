@@ -153,7 +153,7 @@ def getQualityVideoUrl(renditions, iosRenditions):
     liveStreamType = thisAddon.getSetting('liveStreamType')
     videoRenditions = []
     videoUrl = None
-    allRenditions = iosRenditions
+    allRenditions = list(iosRenditions)
     allRenditions.extend(renditions)
     liveStreams = [r for r in allRenditions if r['size'] <= 0]
     if liveStreams:
