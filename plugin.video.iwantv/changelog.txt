@@ -1,3 +1,5 @@
+0.0.25
+    Fix for URLs with UTF8 chars
 0.0.24
     Forced update
 0.0.23
