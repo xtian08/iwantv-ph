@@ -95,9 +95,9 @@ def showShows(url):
             showUrl = common.parseDOM(spanTitle[0], "a" , ret = 'href')
             showThumbnail = common.parseDOM(showInfo, "img" , ret = 'src')
             if params['TypeID'] == 2 or params['TypeID'] == 3:
-                addDir(showTitle[0].encode('utf8'), showUrl[0], 4, showThumbnail[0], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
+                addDir(showTitle[0].encode('utf8'), showUrl[0].encode('utf8'), 4, showThumbnail[0], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
             else:
-                addDir(showTitle[0].encode('utf8'), showUrl[0], 3, showThumbnail[0])
+                addDir(showTitle[0].encode('utf8'), showUrl[0].encode('utf8'), 3, showThumbnail[0])
     if hasShows == False:
         dialog = xbmcgui.Dialog()
         dialog.ok("No Shows", "No shows found.")
