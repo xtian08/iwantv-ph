@@ -2,7 +2,7 @@
 <addons>
     <addon id="plugin.video.iwantv"
            name="iWantv"
-           version="0.0.25"
+           version="0.0.26"
            provider-name="mang.pakundo">
       <requires>
         <import addon="xbmc.python" version="2.1.0"/>
@@ -19,11 +19,11 @@
         <platform>all</platform>
       </extension>
     </addon>
-    <addon id="repository.mang.pakundo.addons" name="mang.pakundo Add-ons" version="0.0.2" provider-name="mang.pakundo">
+    <addon id="repository.mang.pakundo.addons" name="mang.pakundo Add-ons" version="0.0.3" provider-name="mang.pakundo">
         <extension point="xbmc.addon.repository" name="mang.pakundo Add-ons">
-            <info compressed="false">https://github.com/mang-pakundo/mang-pakundo-tv/blob/master/addons.xml</info>
-            <checksum>https://github.com/mang-pakundo/mang-pakundo-tv/blob/master/addons.xml.md5</checksum>
-            <datadir zip="false">https://github.com/mang-pakundo/mang-pakundo-tv/blob/master/</datadir>
+            <info compressed="false">http://todits-xbmc.googlecode.com/git/addons.xml</info>
+            <checksum>http://todits-xbmc.googlecode.com/git/addons.xml.md5</checksum>
+            <datadir zip="false">http://todits-xbmc.googlecode.com/git/</datadir>
         </extension>
         <extension point="xbmc.addon.metadata">
             <summary>XBMC Plugins</summary>
