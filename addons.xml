@@ -19,10 +19,10 @@
         <platform>all</platform>
       </extension>
     </addon>
-    <addon id="repository.mang.pakundo.addons" name="mang.pakundo Add-ons" version="0.0.6" provider-name="mang.pakundo">
+    <addon id="repository.mang.pakundo.addons" name="mang.pakundo Add-ons" version="0.0.7" provider-name="mang.pakundo">
         <extension point="xbmc.addon.repository" name="mang.pakundo Add-ons">
             <info compressed="false">https://raw.githubusercontent.com/mang-pakundo/mang-pakundo-tv/master/addons.xml</info>
-            <checksum>https://raw.githubusercontent.com/mang-pakundo/mang-pakundo-tv/master/addons.xml</checksum>
+            <checksum>https://raw.githubusercontent.com/mang-pakundo/mang-pakundo-tv/master/addons.xml.md5</checksum>
             <datadir zip="true">https://raw.githubusercontent.com/mang-pakundo/mang-pakundo-tv/master/plugin.video.iwantv.zip</datadir>
         </extension>
         <extension point="xbmc.addon.metadata">
