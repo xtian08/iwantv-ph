@@ -2,7 +2,7 @@
 <addons>
     <addon id="plugin.video.iwantv"
            name="iWantv"
-           version="0.0.26"
+           version="0.0.27"
            provider-name="mang.pakundo">
       <requires>
         <import addon="xbmc.python" version="2.1.0"/>

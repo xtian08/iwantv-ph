@@ -435,7 +435,7 @@ def addDir(name, url, mode, thumbnail, page = 1, isFolder = True, **kwargs):
 
 
 thisPlugin = int(sys.argv[1])
-userAgent = 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:18.0) Gecko/20100101 Firefox/18.0'
+userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.37 Safari/537.36'
 baseUrl = 'http://www.iwantv.com.ph'
 cookieJarType = ''
 cookieJar = cookielib.CookieJar()
