@@ -1,0 +1,1 @@
+Tigilan ang kalokohang ito!
