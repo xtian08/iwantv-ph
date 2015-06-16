@@ -135,10 +135,11 @@ def showEpisodes(url):
         url = common.parseDOM(e, "a", attrs = { 'class' : 'btn-play-blue playbtn'}, ret = 'href')
         thumbnail = common.parseDOM(e, "img", ret = 'src')
         kwargs = { 'listProperties' : { 'IsPlayable' : 'true' } }
+        title = title[0].encode('utf-8')
         if len(thumbnail) <= 0:
-            addDir(title[0], url[0], 4, '', isFolder = False, **kwargs)
+            addDir(title, url[0], 4, '', isFolder = False, **kwargs)
         else:
-            addDir(title[0], url[0], 4, thumbnail[0], isFolder = False, **kwargs)
+            addDir(title, url[0], 4, thumbnail[0], isFolder = False, **kwargs)
     xbmcplugin.endOfDirectory(thisPlugin)
 
 def getPlayUrl(jsonParams):
