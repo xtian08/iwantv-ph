@@ -15,10 +15,9 @@
     <string id="50404">Live stream type</string>
     <string id="50500">Network Settings</string>
     <string id="50501">Any Philippine IP (Set to "0.0.0.0" to auto-generate)</string>
-    <string id="50502">I am outside the Philippines (Set a Philippine IP)</string>
     <string id="50511">Enable Proxy</string>
     <string id="50512">Proxy Address</string>
-    <string id="50513">Use Safe Network Bypass (Philippine IP settings is not required)</string>
+    <string id="50513">Use Safe Network Bypass</string>
     <string id="50701">Announcement</string>
     <string id="56000">Login Failed</string>
 </strings>
