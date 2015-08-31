@@ -87,17 +87,21 @@ def showShows(url):
         else:
             login()
     hasShows = False
+    added_shows = {}
     for showInfo in showsHtml:
         if len(showInfo.strip()) > 0:
             hasShows = True
             spanTitle = common.parseDOM(showInfo, "span", attrs = {'class' : 'video-title'})
-            showTitle = common.parseDOM(spanTitle[0], "a")
-            showUrl = common.parseDOM(spanTitle[0], "a" , ret = 'href')
+            showTitle = common.parseDOM(spanTitle[0], "a")[0].encode('utf8')
+            showUrl = common.parseDOM(spanTitle[0], "a" , ret = 'href')[0].encode('utf8')
             showThumbnail = common.parseDOM(showInfo, "img" , ret = 'src')
+            if added_shows.has_key(showTitle) and added_shows[showTitle] == showUrl:
+                continue
             if params['TypeID'] == 2 or params['TypeID'] == 3:
-                addDir(showTitle[0].encode('utf8'), showUrl[0].encode('utf8'), 4, showThumbnail[0], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
+                addDir(showTitle, showUrl, 4, showThumbnail[0], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
             else:
-                addDir(showTitle[0].encode('utf8'), showUrl[0].encode('utf8'), 3, showThumbnail[0])
+                addDir(showTitle, showUrl, 3, showThumbnail[0])
+            added_shows[showTitle] = showUrl
     if hasShows == False:
         dialog = xbmcgui.Dialog()
         dialog.ok("No Shows", "No shows found.")
@@ -188,14 +192,12 @@ def getQualityVideoUrl(renditions, iosRenditions):
     
 def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer, isMyExperience, publisherId):
     from lib.brightcove import BrightCove
-    isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
     kwargs = {}
     headers = []
-    if isXfwdForEnabled:
-        if not isXForwardedForIpValid():
-            autoGenerateIp()
-        headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
-        kwargs = {'headers' : headers }
+    if not isXForwardedForIpValid():
+        autoGenerateIp()
+    headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
+    kwargs = {'headers' : headers }
     isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
     if isProxyEnabled:
         kwargs['proxy'] = thisAddon.getSetting('proxyAddress')
@@ -236,7 +238,7 @@ def playEpisode(url, mode):
     htmlData = ''
     videoHint = None
     playerKey = None
-    playerID = None
+    player_id = None
     linkBaseURL = None
     videoPlayer = None
     episodeDetails = {}
@@ -244,20 +246,21 @@ def playEpisode(url, mode):
         htmlData = callServiceApi(url)
         videoHint = common.parseDOM(htmlData, "div", attrs = {'class' : 'video-page-player'})
         playerKey = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerKey'}, ret = 'value')
-        playerID = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerID'}, ret = 'value')
+        player_id_value = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerID'}, ret = 'value')
         linkBaseURL = common.parseDOM(htmlData, "param", attrs = {'name' : 'linkBaseURL'}, ret = 'value')
         videoPlayer = common.parseDOM(htmlData, "param", attrs = {'name' : '@videoPlayer'}, ret = 'value')
         myExperience = common.parseDOM(htmlData, "object", attrs = {'class' : 'BrightcoveExperience'}, ret = 'id')
-        if videoHint and playerKey and playerID and videoPlayer:
+        if videoHint and playerKey and player_id_value and videoPlayer:
             break
         else:
             login()
-    if len(playerKey) == 0 or len(playerID) == 0:
-        if len(videoHint) > 0:
-            if videoHint[0].find('npu-step1-box'):
-                dialog = xbmcgui.Dialog()
-                dialog.ok("Premium Content", "You need a premium account to access this item.", 'You can upgrade your subscription via the iWantv website.')
-                return False
+            
+    if not player_id_value:
+        dialog = xbmcgui.Dialog()
+        dialog.ok("Premium Content", "You need a premium account to access this item.", 'You can upgrade your subscription via the iWantv website.')
+        return False
+        
+    player_id = player_id_value[0].replace("'", '')
     videoBaseUrl = ''
     if len(linkBaseURL) > 0:
         videoBaseUrl = linkBaseURL[0]
@@ -266,7 +269,7 @@ def playEpisode(url, mode):
     isMyExperience = False
     if len(myExperience) > 0 and myExperience[0] == 'myExperience':
         isMyExperience = True
-    videoUrl = getVideoUrl(videoBaseUrl, brightCoveToken, playerKey[0], playerID[0], videoPlayer[0], isMyExperience, publisherId)
+    videoUrl = getVideoUrl(videoBaseUrl, brightCoveToken, playerKey[0], player_id, videoPlayer[0], isMyExperience, publisherId)
     liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
     liz.setInfo( type="Video", infoLabels = { "Title": name } )
     if 'm3u8' in videoUrl:
@@ -297,25 +300,24 @@ def playEpisode(url, mode):
         liz.setProperty('IsPlayable', 'true')
     else:
         pass
-    isXfwdForEnabled = True if thisAddon.getSetting('isXfwdForEnabled') == 'true' else False
-    videoUrl = '%s|X-Forwarded-For=%s' % (videoUrl, thisAddon.getSetting('xForwardedForIp')) if isXfwdForEnabled else videoUrl
+    if not isXForwardedForIpValid():
+        autoGenerateIp()
+    videoUrl = '%s|X-Forwarded-For=%s' % (videoUrl, thisAddon.getSetting('xForwardedForIp'))
     liz.setPath(videoUrl)
     return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
     
-def showAnnouncement():
-    xbmc.executebuiltin("ActivateWindow(%d)" % (10147, ))
-    win = xbmcgui.Window(10147)
-    message = 'Live stream is now working for those who are outside the Philippines. You need to enable the "%s" setting. Don\'t worry about the IP. I will auto-generate it for you if you\'re not sure what to put in it.\n\nDon\'t know how or where to set it? Head over to the settings page of this addon by right-clicking the addon or by pressing "c" while the addon is highlighted or by long-pressing on the addon. Go to the "Network" page and enable it from there.' % xbmcaddon.Addon().getLocalizedString(50502)
-    xbmc.sleep(100)
-    win.getControl(1).setLabel(xbmcaddon.Addon().getLocalizedString(50701))
-    win.getControl(5).setText(message)
-
 def callServiceApi(path, params = {}, headers = [], opener = None):
     if opener == None:
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
         #opener = urllib2.build_opener(urllib2.ProxyHandler({'http': '127.0.0.1:8888'}), urllib2.HTTPCookieProcessor(cookieJar))
+        isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
+        if isProxyEnabled:
+            opener = urllib2.build_opener(urllib2.ProxyHandler({'http': thisAddon.getSetting('proxyAddress')}), urllib2.HTTPCookieProcessor(cookieJar))
     else:
         urllib2.install_opener(opener)
+    if not isXForwardedForIpValid():
+        autoGenerateIp()
+    headers.append(('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp')))
     headers.append(('User-Agent', userAgent))
     opener.addheaders = headers
     if params:
@@ -433,8 +435,16 @@ def addDir(name, url, mode, thumbnail, page = 1, isFolder = True, **kwargs):
             for listPropertyKey, listPropertyValue in v.iteritems():
                 liz.setProperty(listPropertyKey, listPropertyValue)
     return xbmcplugin.addDirectoryItem(handle=thisPlugin,url=u,listitem=liz,isFolder=isFolder)
-
-
+    
+def showMessage(message, title = xbmcaddon.Addon().getLocalizedString(50701)):
+    if not message:
+        return
+    xbmc.executebuiltin("ActivateWindow(%d)" % (10147, ))
+    win = xbmcgui.Window(10147)
+    xbmc.sleep(100)
+    win.getControl(1).setLabel(title)
+    win.getControl(5).setText(message)
+    
 thisPlugin = int(sys.argv[1])
 userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.37 Safari/537.36'
 baseUrl = 'http://www.iwantv.com.ph'
@@ -502,5 +512,9 @@ elif mode == 11:
     showSubscribedShows(url)
 
 if thisAddon.getSetting('announcement') != thisAddon.getAddonInfo('version'):
-    showAnnouncement()
-    xbmcaddon.Addon().setSetting('announcement', thisAddon.getAddonInfo('version'))
+    messages = {
+        '0.0.29': 'Your iWantv addon has been updated. A Philippine IP is now required to watch shows. This might have been autogenerated for you but if it still doesn\'t work, reset the IP to 0.0.0.0 in the settings and a new one will be generated for you. Enjoy!'
+        }
+    if thisAddon.getAddonInfo('version') in messages:
+        showMessage(messages[thisAddon.getAddonInfo('version')], xbmcaddon.Addon().getLocalizedString(50701))
+        xbmcaddon.Addon().setSetting('announcement', thisAddon.getAddonInfo('version'))
