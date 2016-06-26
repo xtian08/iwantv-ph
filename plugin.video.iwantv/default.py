@@ -10,6 +10,150 @@ common.plugin = thisAddon.getAddonInfo('name')
 # common.dbg = True # Default
 # common.dbglevel = 3 # Default
 
+USER_AGENT = 'okhttp/2.4.0'
+SSOID = '1d3cf6ad-f133-4e22-aa15-3c9a56e4aefc'
+CLIENT_ID = '4926888'
+CLIENT_SECRET = '176810351025222262192664259613215154'
+API_BASE_URL = 'http://cms.iwantv.com.ph'
+BASIC_CREDENTIALS = {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}
+LIVE_STREAM_ID = '/content/GetLiveStreams'
+MODE_CATEGORY = 1
+MODE_SUBCATEGORY = 2
+MODE_WORLD_DETAIL = 21
+MODE_EPISODE = 4
+MODE_PLAY = 5
+MODE_PLAY_LIVE = 6
+
+def show_categories():
+    categories = [
+        {'name': 'Popular Shows', 'id': '/content/GetPopularShows', 'mode': MODE_SUBCATEGORY},
+        {'name': 'Latest Episodes', 'id': '/content/GetLatestEpisodes', 'mode': MODE_SUBCATEGORY},
+        {'name': 'Livestream', 'id': LIVE_STREAM_ID, 'mode': MODE_SUBCATEGORY}
+    ]
+    
+    all_worlds = get_all_worlds_by_sso_id(0, 10)
+    for world in all_worlds['DATA']:
+        categories.append({'name': world['worldTitle'], 'id': world['worldID'], 'mode': MODE_WORLD_DETAIL})
+    all_worlds = get_all_worlds_by_sso_id(10, 10)
+    for world in all_worlds['DATA']:
+        categories.append({'name': world['worldTitle'], 'id': world['worldID'], 'mode': MODE_WORLD_DETAIL})
+        
+    for category in categories:
+        add_dir(category['name'], category['id'], category['mode'])
+    xbmcplugin.endOfDirectory(thisPlugin)
+    
+def show_subcategories(id):
+    url = build_url(id)
+    subcategories = get_json_response(url)
+    for sub in subcategories['DATA']:
+        thumb = get_program_image(sub['program_images'], 'lo')
+        fanart = get_program_image(sub['program_images'], 'hi')
+        # if these are the live stream sub-categories, then set the mode of the items to playable live streams since live streams have no episodes
+        mode = MODE_PLAY_LIVE if id == LIVE_STREAM_ID else MODE_EPISODE
+        add_dir(sub['program_title'], str(sub['program_id']), mode, art = {'thumb': thumb, 'fanart': fanart})
+    xbmcplugin.endOfDirectory(thisPlugin)
+    
+def show_episodes(id):
+    url = build_url('/home/GetContent', params = {'program_id': id})
+    episodes = get_json_response(url)
+    fanart = get_program_image(episodes['DATA'][0]['ProgramThumbnailImages'], 'large')
+    for episode in episodes['DATA'][0]['Episodes']:
+        thumb = get_program_image(episode['EpisodeThumbnail'], 'hi')
+        add_dir(episode['EpisodeTitle'], episode['EpisodeID'], MODE_PLAY, art = {'thumb': thumb, 'fanart': fanart})
+    xbmcplugin.endOfDirectory(thisPlugin)
+    
+def show_world_details(id):
+    url = build_url('/home/GetWorldDetails', params = {'worldid': id, 'ssoid': SSOID})
+    world_details = get_json_response(url)
+    fanart = get_program_image(world_details['DATA'][0]['WorldAppImage'], 'hi')
+    for world in world_details['DATA'][0]['ShowData']:
+        thumb = get_program_image(world['ShowThumbnailImages'], 'hi')
+        add_dir(world['ShowTitle'], world['ShowId'], MODE_EPISODE, art = {'thumb': thumb, 'fanart': fanart})
+    xbmcplugin.endOfDirectory(thisPlugin)
+    
+def play_episode(name, id, thumb):
+    get_iplocation()
+    program_id = id if mode == MODE_PLAY_LIVE else ''
+    episode_id = id if mode == MODE_PLAY else ''
+    url = build_url('/content/ssogetasset', params = {'ssoid': SSOID, 'programId': program_id, 'EpisodeID': episode_id, 'IP': thisAddon.getSetting('xForwardedForIp'), 'sstostage': 'PRD'})
+    assets = get_json_response(url)
+    if not assets['SUCCESS']:
+        dialog = xbmcgui.Dialog()
+        dialog.ok("Premium Content", assets['DATA']['ErrorMessage'])
+        return
+    video_type = 'HLS'
+    video_url = [a['VideoUrl'] for a in assets['DATA']['VideoAssets'] if a['VideoType'].lower() == video_type.lower()]
+    video_url = video_url[0] if len(video_url) > 0 else ''
+    liz = xbmcgui.ListItem(name)
+    liz.setInfo(type="Video", infoLabels={ "Title": name })
+    liz.setArt({'thumb': thumb})
+    video_url = '%s|X-Forwarded-For=%s' % (video_url, thisAddon.getSetting('xForwardedForIp'))
+    liz.setPath(video_url)
+    # return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
+    xbmc.Player().play(item = video_url, listitem = liz)
+    
+# trying to be legit
+def get_iplocation():
+    http_request(API_BASE_URL + '/Interface/GetIPLocation')
+    
+def get_program_image(program_images, img_dpi):
+    try:
+        images = [i['IMG_URL'] for i in program_images if i['IMG_DPI'] == img_dpi]
+        return images[0]
+    except:
+        return None
+    
+def get_all_worlds_by_sso_id(last_row, max_count):
+    url = build_url('/home/GetAllWorldsBySSOID', params = {'ssoid': SSOID, 'lastRow':  last_row, 'maxCount':  max_count})
+    return get_json_response(url)
+    
+def build_url(path, base_url = API_BASE_URL, params = {}):
+    return '{base_url}{path}?{credentials}{params}'.format(
+            base_url = base_url, 
+            path = path, 
+            credentials = urllib.urlencode(BASIC_CREDENTIALS), 
+            params = '&' + urllib.urlencode(params) if params else ''
+        )
+    
+def http_request(url, params = {}, headers = [], opener = None):
+    if opener == None:
+        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
+        #opener = urllib2.build_opener(urllib2.ProxyHandler({'http': '127.0.0.1:8888'}), urllib2.HTTPCookieProcessor(cookieJar))
+        isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
+        if isProxyEnabled:
+            opener = urllib2.build_opener(urllib2.ProxyHandler({'http': thisAddon.getSetting('proxyAddress')}), urllib2.HTTPCookieProcessor(cookieJar))
+    else:
+        urllib2.install_opener(opener)
+    if not isXForwardedForIpValid():
+        autoGenerateIp()
+    headers.append(('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp')))
+    headers.append(('User-Agent', USER_AGENT))
+    opener.addheaders = headers
+    if params:
+        data_encoded = urllib.urlencode(params)
+        response = opener.open(url, data_encoded)
+    else:
+        response = opener.open(url)
+    return response.read()
+    
+def get_json_response(url):
+    response = http_request(url)
+    return json.loads(response)
+    
+def add_dir(name, id, mode, isFolder = True, **kwargs):
+    url = '{addon_name}?id={id}&mode={mode}&name={name}'.format(addon_name = sys.argv[0], id = urllib.quote_plus(str(id)), mode = mode, name =urllib.quote_plus(name.encode('utf8')))
+    liz = xbmcgui.ListItem(name)
+    liz.setInfo( type="Video", infoLabels={ "Title": name } )
+    for k, v in kwargs.iteritems():
+        if k == 'list_properties':
+            for list_property_key, list_property_value in v.iteritems():
+                liz.setProperty(list_property_key, list_property_value)
+        if k == 'art':
+            liz.setArt(v)
+            url = '{url}&{art_params}'.format(url = url, art_params = urllib.urlencode(v))
+            
+    return xbmcplugin.addDirectoryItem(handle = thisPlugin, url = url, listitem = liz, isFolder = isFolder)
+
 def showCategories():
     accountChanged = checkAccountChange()
     if not isXForwardedForIpValid():
@@ -469,11 +613,15 @@ name=None
 mode=None
 page=1
 thumbnail = ''
+thumb = ''
 brightCoveToken = 'f9c60da6432f7642249592a9d2669046515cb302'
 publisherId = 1213020456001
 cacheExpirySeconds = int(thisAddon.getSetting('cacheHours')) * 60 * 60
 isCacheEnabled = True if thisAddon.getSetting('isCacheEnabled') == 'true' else False
 liveShowsPath = '/TV/Channel/3'
+
+id = None
+mode = 1
 
 try:
     url=urllib.unquote_plus(params["url"])
@@ -495,25 +643,46 @@ try:
     thumbnail=urllib.unquote_plus(params["thumbnail"])
 except:
     pass
+try:
+    id = urllib.unquote_plus(params["id"])
+except:
+    pass
+try:
+    thumb=urllib.unquote_plus(params["thumb"])
+except:
+    pass
+
+if mode == MODE_CATEGORY or id == None or len(id) < 1:
+    show_categories()
+elif mode == MODE_SUBCATEGORY:
+    show_subcategories(id)
+elif mode == MODE_EPISODE:
+    show_episodes(id)
+elif mode == MODE_PLAY or mode == MODE_PLAY_LIVE:
+    play_episode(name, id, thumb)
+elif mode == MODE_WORLD_DETAIL:
+    show_world_details(id)
     
-if mode == None or url == None or len(url) < 1:
-    showCategories()
-elif mode == 1:
-    showSubCategories(url)
-elif mode == 2:
-    showShows(url)
-elif mode == 3:
-    showEpisodes(url)
-elif mode == 4 or mode == 5:
-    playEpisode(url, mode)
-elif mode == 10:
-    showSubscribedCategories(url)
-elif mode == 11:
-    showSubscribedShows(url)
+
+# if mode == None or url == None or len(url) < 1:
+    # show_categories()
+    # # showCategories()
+# elif mode == 1:
+    # showSubCategories(url)
+# elif mode == 2:
+    # showShows(url)
+# elif mode == 3:
+    # showEpisodes(url)
+# elif mode == 4 or mode == 5:
+    # playEpisode(url, mode)
+# elif mode == 10:
+    # showSubscribedCategories(url)
+# elif mode == 11:
+    # showSubscribedShows(url)
 
 if thisAddon.getSetting('announcement') != thisAddon.getAddonInfo('version'):
     messages = {
-        '0.0.29': 'Your iWantv addon has been updated.\n\n1. It looks like iWantv has new subscription tiers. Exclusive shows now require an ABS-CBN Mobile subscription.\n\n2. Due to the change in iWantv, a Philippine IP is now required to watch shows. This might have been autogenerated for you already but if it still doesn\'t work, you can try to reset the IP to 0.0.0.0 in the settings and a new one will be generated for you.\n\nEnjoy!'
+        '0.0.30': 'Your iWantv addon has been updated.\n\niWantv did a lot of breaking changes and this addon has been changed to follow them. Please check their website to see what changed. This is the first release of this addon since iWantv made their changes and and therefore contains a lot of bugs... and hot garbage :-P. By the way, have I mentioned that I accept Starbucks gift cards... or tickets... to Disneyland... in Japan... with plane tickets... to Japan... and the Philippines... hah! Anyway, enjoy watching!'
         }
     if thisAddon.getAddonInfo('version') in messages:
         showMessage(messages[thisAddon.getAddonInfo('version')], xbmcaddon.Addon().getLocalizedString(50701))
