@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.iwantv" name="iWantv" version="0.0.30" provider-name="mang.pakundo">
+<addon id="plugin.video.iwantv" name="iWantv" version="1.0.0" provider-name="mang.pakundo">
     <requires>
         <import addon="xbmc.python" version="2.1.0"/>
-        <import addon="script.module.parsedom" version="0.9.1"/>
-        <import addon="script.module.pyamf" version="0.6.1"/>
     </requires>
     <extension point="xbmc.python.pluginsource" library="default.py">
         <provides>video</provides>
@@ -11,6 +9,6 @@
   <extension point="xbmc.addon.metadata">
     <platform>all</platform>
     <summary>iWantv</summary>
-    <description>This is still in Alpha. iWantv account is required.</description>
+    <description>An iWantv account is required.</description>
   </extension>
 </addon>

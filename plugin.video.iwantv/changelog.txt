@@ -1,3 +1,8 @@
+1.0.0
+    Now uses API calls (starting with 0.0.30)
+    Fix for marking watched episodes
+    Refactors and Cleanup
+    Improvements and bug fixes
 0.0.30
     Adjustments for new changes (a lot of them)
 0.0.29

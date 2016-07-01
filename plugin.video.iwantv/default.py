@@ -1,14 +1,13 @@
-import sys, urllib, urllib2, json, cookielib, time, os.path, hashlib
-import xbmc, xbmcgui, xbmcplugin, xbmcaddon
-from lib.SimpleCache import SimpleCache
-
-import CommonFunctions
-common = CommonFunctions
-thisAddon = xbmcaddon.Addon()
-common.plugin = thisAddon.getAddonInfo('name')
-
-# common.dbg = True # Default
-# common.dbglevel = 3 # Default
+import sys
+import urllib
+import urllib2
+import json
+import urlparse
+import xbmc
+import xbmcgui
+import xbmcplugin
+import xbmcaddon
+from random import randint
 
 USER_AGENT = 'okhttp/2.4.0'
 SSOID = '1d3cf6ad-f133-4e22-aa15-3c9a56e4aefc'
@@ -40,7 +39,7 @@ def show_categories():
         
     for category in categories:
         add_dir(category['name'], category['id'], category['mode'])
-    xbmcplugin.endOfDirectory(thisPlugin)
+    xbmcplugin.endOfDirectory(this_plugin)
     
 def show_subcategories(id):
     url = build_url(id)
@@ -48,10 +47,10 @@ def show_subcategories(id):
     for sub in subcategories['DATA']:
         thumb = get_program_image(sub['program_images'], 'lo')
         fanart = get_program_image(sub['program_images'], 'hi')
-        # if these are the live stream sub-categories, then set the mode of the items to playable live streams since live streams have no episodes
+        # if these are the live stream sub-categories, then jump directly to play episode since live streams don't have episodes
         mode = MODE_PLAY_LIVE if id == LIVE_STREAM_ID else MODE_EPISODE
         add_dir(sub['program_title'], str(sub['program_id']), mode, art = {'thumb': thumb, 'fanart': fanart})
-    xbmcplugin.endOfDirectory(thisPlugin)
+    xbmcplugin.endOfDirectory(this_plugin)
     
 def show_episodes(id):
     url = build_url('/home/GetContent', params = {'program_id': id})
@@ -59,8 +58,12 @@ def show_episodes(id):
     fanart = get_program_image(episodes['DATA'][0]['ProgramThumbnailImages'], 'large')
     for episode in episodes['DATA'][0]['Episodes']:
         thumb = get_program_image(episode['EpisodeThumbnail'], 'hi')
-        add_dir(episode['EpisodeTitle'], episode['EpisodeID'], MODE_PLAY, art = {'thumb': thumb, 'fanart': fanart})
-    xbmcplugin.endOfDirectory(thisPlugin)
+        # set this list property as playable and not a folder and do a setResolvedUrl in the method that handles playing.
+        # this is they way i was able to make kodi remember the watched episodes as well as mark the elapsed time
+        art = {'thumb': thumb, 'fanart': fanart}
+        list_properties = {'isPlayable': 'true'}
+        add_dir(episode['EpisodeTitle'], episode['EpisodeID'], MODE_PLAY, is_folder = False, art = art, list_properties = list_properties)
+    xbmcplugin.endOfDirectory(this_plugin)
     
 def show_world_details(id):
     url = build_url('/home/GetWorldDetails', params = {'worldid': id, 'ssoid': SSOID})
@@ -69,28 +72,31 @@ def show_world_details(id):
     for world in world_details['DATA'][0]['ShowData']:
         thumb = get_program_image(world['ShowThumbnailImages'], 'hi')
         add_dir(world['ShowTitle'], world['ShowId'], MODE_EPISODE, art = {'thumb': thumb, 'fanart': fanart})
-    xbmcplugin.endOfDirectory(thisPlugin)
+    xbmcplugin.endOfDirectory(this_plugin)
     
 def play_episode(name, id, thumb):
     get_iplocation()
     program_id = id if mode == MODE_PLAY_LIVE else ''
     episode_id = id if mode == MODE_PLAY else ''
-    url = build_url('/content/ssogetasset', params = {'ssoid': SSOID, 'programId': program_id, 'EpisodeID': episode_id, 'IP': thisAddon.getSetting('xForwardedForIp'), 'sstostage': 'PRD'})
+    params = {'ssoid': SSOID, 'programId': program_id, 'EpisodeID': episode_id, 'IP': this_addon.getSetting('xForwardedForIp'), 'sstostage': 'PRD'}
+    url = build_url('/content/ssogetasset', params = params)
     assets = get_json_response(url)
     if not assets['SUCCESS']:
         dialog = xbmcgui.Dialog()
         dialog.ok("Premium Content", assets['DATA']['ErrorMessage'])
         return
-    video_type = 'HLS'
+    video_type = this_addon.getSetting('liveStreamType')
     video_url = [a['VideoUrl'] for a in assets['DATA']['VideoAssets'] if a['VideoType'].lower() == video_type.lower()]
     video_url = video_url[0] if len(video_url) > 0 else ''
     liz = xbmcgui.ListItem(name)
-    liz.setInfo(type="Video", infoLabels={ "Title": name })
+    liz.setInfo(type="Video", infoLabels={"Title": name})
     liz.setArt({'thumb': thumb})
-    video_url = '%s|X-Forwarded-For=%s' % (video_url, thisAddon.getSetting('xForwardedForIp'))
+    video_url = '%s|X-Forwarded-For=%s' % (video_url, this_addon.getSetting('xForwardedForIp'))
     liz.setPath(video_url)
-    # return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
-    xbmc.Player().play(item = video_url, listitem = liz)
+    if mode == MODE_PLAY_LIVE:
+        xbmc.Player().play(item = video_url, listitem = liz)
+    else:
+        return xbmcplugin.setResolvedUrl(this_plugin, True, liz)
     
 # trying to be legit
 def get_iplocation():
@@ -115,18 +121,14 @@ def build_url(path, base_url = API_BASE_URL, params = {}):
             params = '&' + urllib.urlencode(params) if params else ''
         )
     
-def http_request(url, params = {}, headers = [], opener = None):
-    if opener == None:
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
-        #opener = urllib2.build_opener(urllib2.ProxyHandler({'http': '127.0.0.1:8888'}), urllib2.HTTPCookieProcessor(cookieJar))
-        isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
-        if isProxyEnabled:
-            opener = urllib2.build_opener(urllib2.ProxyHandler({'http': thisAddon.getSetting('proxyAddress')}), urllib2.HTTPCookieProcessor(cookieJar))
-    else:
-        urllib2.install_opener(opener)
-    if not isXForwardedForIpValid():
-        autoGenerateIp()
-    headers.append(('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp')))
+def http_request(url, params = {}, headers = []):
+    opener = urllib2.build_opener()
+    is_proxy_enabled = True if this_addon.getSetting('isProxyEnabled') == 'true' else False
+    if is_proxy_enabled:
+        opener = urllib2.build_opener(urllib2.ProxyHandler({'http': this_addon.getSetting('proxyAddress')}))
+    if not is_x_forwarded_for_ip_valid():
+        auto_gnerate_ip()
+    headers.append(('X-Forwarded-For', this_addon.getSetting('xForwardedForIp')))
     headers.append(('User-Agent', USER_AGENT))
     opener.addheaders = headers
     if params:
@@ -140,447 +142,51 @@ def get_json_response(url):
     response = http_request(url)
     return json.loads(response)
     
-def add_dir(name, id, mode, isFolder = True, **kwargs):
-    url = '{addon_name}?id={id}&mode={mode}&name={name}'.format(addon_name = sys.argv[0], id = urllib.quote_plus(str(id)), mode = mode, name =urllib.quote_plus(name.encode('utf8')))
+def add_dir(name, id, mode, is_folder = True, **kwargs):
+    query_string = {'id': id, 'mode': mode, 'name': name.encode('utf8')}
+    url = '{addon_name}?{query_string}'.format(addon_name = sys.argv[0], query_string = urllib.urlencode(query_string))
     liz = xbmcgui.ListItem(name)
-    liz.setInfo( type="Video", infoLabels={ "Title": name } )
+    liz.setInfo( type="Video", infoLabels={"Title": name} )
     for k, v in kwargs.iteritems():
-        if k == 'list_properties':
+        if k == 'list_properties' and v:
             for list_property_key, list_property_value in v.iteritems():
                 liz.setProperty(list_property_key, list_property_value)
-        if k == 'art':
+        if k == 'art' and v:
             liz.setArt(v)
             url = '{url}&{art_params}'.format(url = url, art_params = urllib.urlencode(v))
             
-    return xbmcplugin.addDirectoryItem(handle = thisPlugin, url = url, listitem = liz, isFolder = isFolder)
+    return xbmcplugin.addDirectoryItem(handle = this_plugin, url = url, listitem = liz, isFolder = is_folder)
 
-def showCategories():
-    accountChanged = checkAccountChange()
-    if not isXForwardedForIpValid():
-        autoGenerateIp()
-    if accountChanged:
-        cleanCache(True)
-    else:
-        cleanCache(False)
-    categories = [
-        { 'name' : 'TV', 'url' : '/TV/Categories/1', 'mode' : 1 },
-        { 'name' : 'Movies', 'url' : '/Movies/Categories/2', 'mode' : 1 },
-        { 'name' : 'Live', 'url' : '/TV/Channel/3', 'mode' : 1 },
-    ]
-    for c in categories:
-        addDir(c['name'], c['url'], c['mode'], 'icon.png')
-    xbmcplugin.endOfDirectory(thisPlugin)
-
-def getSubCategories(url, htmlData):
-    subCatListKey = 'subcatlist:v1:' + url
-    subCatList = getFromCache(subCatListKey)
-    if subCatList == None:
-        subCatOuterHtml = common.parseDOM(htmlData, "ul", attrs = {'class' : 'movie-categories-list'})
-        subCatList = common.parseDOM(subCatOuterHtml[0], "li", ret = 'name')
-        setToCache(subCatListKey, subCatList)
-    return subCatList
-
-def getLiveChannelDetails(url, htmlData):
-    liveChannelDetailsKey = '%s:chaneldetails:v2' % url
-    liveChannelDetails = getFromCache(liveChannelDetailsKey)
-    if liveChannelDetails == None:
-        liveChannelDetails = {}
-        subCatOuterHtml = common.parseDOM(htmlData, "ul", attrs = {'class' : 'movie-categories-list'})
-        groupIds = common.parseDOM(subCatOuterHtml[0], "li", ret = 'groupid')
-        for groupId in groupIds:
-            channelName = common.parseDOM(subCatOuterHtml[0], "li", attrs = { 'groupid' : groupId }, ret = 'name')
-            channelDetailsHtml = common.parseDOM(subCatOuterHtml[0], "li", attrs = { 'groupid' : groupId })
-            imgUrl = common.parseDOM(channelDetailsHtml[0], "img", ret = 'src')
-            liveChannelDetails[channelName[0]] = (r'{ "groupid" : %s, "day" : "Sunday" }' % groupId, imgUrl[0])
-        setToCache(liveChannelDetailsKey, liveChannelDetails)
-    return liveChannelDetails
-    
-def showSubCategories(url):
-    htmlDataCacheKey = 'html:v1:' + url
-    htmlData = getFromCache(htmlDataCacheKey)
-    if htmlData == None:
-        htmlData = callServiceApi(url)
-    subCatList = getSubCategories(url, htmlData)
-    if url == liveShowsPath:
-        liveChannelDetails = getLiveChannelDetails(url, htmlData)
-        for k, v in liveChannelDetails.iteritems():
-            addDir(k, v[0], 5, v[1], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
-    else:
-        typeId = url[-1:]
-        for s in subCatList:
-            addDir(s, r'{"TypeID":%s,"GenreID":"%s"}' % (typeId, s), 2, '')
-    xbmcplugin.endOfDirectory(thisPlugin)
-        
-def showShows(url):
-    htmlData = ''
-    showsHtml = []
-    cacheKey = url
-    headers = [('Content-type', 'application/x-www-form-urlencoded'), ('X-Requested-With', 'XMLHttpRequest')]
-    params = json.loads(url)
-    for i in range(int(thisAddon.getSetting('loginRetries')) + 1):
-        showsHtml = getFromCache(cacheKey)
-        if showsHtml == None or len(showsHtml) == 0:
-            htmlData = callServiceApi('/Viewmore/GetList', params, headers)
-            if htmlData.find(r'</li>') == -1:
-                import re
-                htmlData = re.sub(r"(<span class='video-ep'>.+?</span>)", r'\1</div></li>', htmlData)
-            showsHtml = common.parseDOM(htmlData, "li")
-            setToCache(cacheKey, showsHtml)
-        if len(showsHtml) > 0:
-            break
-        else:
-            login()
-    hasShows = False
-    added_shows = {}
-    for showInfo in showsHtml:
-        if len(showInfo.strip()) > 0:
-            hasShows = True
-            spanTitle = common.parseDOM(showInfo, "span", attrs = {'class' : 'video-title'})
-            showTitle = common.parseDOM(spanTitle[0], "a")[0].encode('utf8')
-            showUrl = common.parseDOM(spanTitle[0], "a" , ret = 'href')[0].encode('utf8')
-            showThumbnail = common.parseDOM(showInfo, "img" , ret = 'src')
-            if added_shows.has_key(showTitle) and added_shows[showTitle] == showUrl:
-                continue
-            if params['TypeID'] == 2 or params['TypeID'] == 3:
-                addDir(showTitle, showUrl, 4, showThumbnail[0], isFolder = False, **{ 'listProperties' : { 'IsPlayable' : 'true' } })
-            else:
-                addDir(showTitle, showUrl, 3, showThumbnail[0])
-            added_shows[showTitle] = showUrl
-    if hasShows == False:
-        dialog = xbmcgui.Dialog()
-        dialog.ok("No Shows", "No shows found.")
-    else:
-        xbmcplugin.endOfDirectory(thisPlugin)
-        
-def showEpisodes(url):
-    url = urllib.quote(url)
-    episodesHtml = []
-    htmlData = ''
-    for i in range(int(thisAddon.getSetting('loginRetries')) + 1):
-        #episodesHtml = getFromCache(url)
-        #if episodesHtml == None:
-        htmlData = callServiceApi(url)
-        episodesHtml = common.parseDOM(htmlData, "div", attrs = { 'class' : 'video-other-episode'})
-        if len(episodesHtml) == 0:
-            login()
-        else:
-            #setToCache(url, episodesHtml)
-            break
-    
-    if len(episodesHtml) == 0:
-        videoPageHtml = common.parseDOM(htmlData, "div", attrs = { 'class' : 'video-page-player'})
-        if len(videoPageHtml) > 0:
-            if videoPageHtml[0].find('noaccess()'):
-                dialog = xbmcgui.Dialog()
-                dialog.ok("Incorrect Login", "Please check your email and password.")
-                return False
-    else:
-        if episodesHtml[0].find('Other Channels') >= 0:
-            return False
-    episodesListHtml = common.parseDOM(episodesHtml[0], "li")
-    for e in episodesListHtml:
-        title = common.parseDOM(e, "span", attrs = { 'class' : 'video-adate'})
-        url = common.parseDOM(e, "a", attrs = { 'class' : 'btn-play-blue playbtn'}, ret = 'href')
-        thumbnail = common.parseDOM(e, "img", ret = 'src')
-        kwargs = { 'listProperties' : { 'IsPlayable' : 'true' } }
-        title = title[0].encode('utf-8')
-        if len(thumbnail) <= 0:
-            addDir(title, url[0], 4, '', isFolder = False, **kwargs)
-        else:
-            addDir(title, url[0], 4, thumbnail[0], isFolder = False, **kwargs)
-    xbmcplugin.endOfDirectory(thisPlugin)
-
-def getPlayUrl(jsonParams):
-    params = json.loads(jsonParams)
-    programHtml = callServiceApi('/Home/GetChannelLiveList', params )
-    channelUrl = common.parseDOM(programHtml, "a", attrs = { 'class' : 'sched-prog' }, ret = 'href')
-    return channelUrl[0]
-    
-def getQualityVideoUrl(renditions, iosRenditions):
-    videoQuality = int(thisAddon.getSetting('videoQuality'))
-    videoRenditionType = thisAddon.getSetting('videoRenditionType')
-    liveStreamType = thisAddon.getSetting('liveStreamType')
-    videoRenditions = []
-    videoUrl = None
-    allRenditions = list(iosRenditions)
-    allRenditions.extend(renditions)
-    liveStreams = [r for r in allRenditions if r['size'] <= 0]
-    if liveStreams:
-        if liveStreamType.upper() == 'HLS':
-            return [s for s in liveStreams if s['defaultURL'].find('m3u8') > -1][0]['defaultURL']
-        else:
-            return [s for s in liveStreams if s['defaultURL'].find('m3u8') <= -1][0]['defaultURL']
-    if videoRenditionType.upper() == 'MOBILE' and iosRenditions is not None:
-        videoRenditions = iosRenditions
-    elif videoRenditionType.upper() == 'DESKTOP' and renditions is not None:
-        videoRenditions = renditions
-    if not videoRenditions:
-        # fallback, use available renditions
-        videoRenditions = allRenditions
-    
-    videoEncodings = {}
-    for v in videoRenditions:
-        videoEncodings[v['encodingRate']] = v['defaultURL']
-    sortedEncodingRates = sorted(videoEncodings.keys())
-    if videoQuality == 2: # high
-        return videoEncodings[max(sortedEncodingRates)]
-    elif videoQuality == 0: #low
-        return videoEncodings[min(sortedEncodingRates)]
-    else: # medium
-        # we'll consider the next one from the highest encoding as medium
-        if len(sortedEncodingRates) > 1:
-            sortedEncodingRates.remove(max(sortedEncodingRates))
-            return videoEncodings[max(sortedEncodingRates)]
-        else:
-            return videoEncodings[max(sortedEncodingRates)]
-    
-def getVideoUrl(videoBaseUrl, brightCoveToken, playerKey, playerId, videoPlayer, isMyExperience, publisherId):
-    from lib.brightcove import BrightCove
-    kwargs = {}
-    headers = []
-    if not isXForwardedForIpValid():
-        autoGenerateIp()
-    headers = [('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp'))]
-    kwargs = {'headers' : headers }
-    isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
-    if isProxyEnabled:
-        kwargs['proxy'] = thisAddon.getSetting('proxyAddress')
-    brightCoveData = None
-    isSafeNetworkBypass = True if thisAddon.getSetting('isSafeNetworkBypass') == 'true' else False
-    defaultVideoUrl = ''
-    renditions = []
-    iosRenditions = []
-    videoRenditions = None
-    if isSafeNetworkBypass:
-        brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
-        if videoPlayer.startswith('ref:'):
-            brightCoveData = brightCove.findMediaByReferenceId(int(playerId), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
-        else:
-            brightCoveData = brightCove.findMediaById(int(playerId), videoPlayer.replace('ref:', ''), publisherId, userAgent = userAgent, **kwargs)
-        defaultVideoUrl = brightCoveData['FLVFullLengthURL']
-        renditions = brightCoveData['renditions']
-        iosRenditions = brightCoveData['IOSRenditions']
-    else:
-        brightCove = BrightCove(brightCoveToken, playerKey, int(playerId))
-        if isMyExperience:
-            brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, videoPlayer.replace('ref:', ''), userAgent, **kwargs)
-        else:
-            brightCoveData = brightCove.getBrightCoveData(videoBaseUrl, contentRefId = None, contentId = videoPlayer, userAgent = userAgent, **kwargs)
-        defaultVideoUrl = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['FLVFullLengthURL']
-        renditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['renditions']
-        iosRenditions = brightCoveData['programmedContent']['videoPlayer']['mediaDTO']['IOSRenditions']
-    videoUrl = getQualityVideoUrl(renditions, iosRenditions)
-    if videoUrl is None:
-        videoUrl = defaultVideoUrl
-    return videoUrl
-
-def playEpisode(url, mode):
-    if mode == 5:
-        url = getPlayUrl(url)
-    url = urllib.quote(url)
-    errorCode = -1
-    htmlData = ''
-    videoHint = None
-    playerKey = None
-    player_id = None
-    linkBaseURL = None
-    videoPlayer = None
-    episodeDetails = {}
-    for i in range(int(thisAddon.getSetting('loginRetries')) + 1):
-        htmlData = callServiceApi(url)
-        videoHint = common.parseDOM(htmlData, "div", attrs = {'class' : 'video-page-player'})
-        playerKey = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerKey'}, ret = 'value')
-        player_id_value = common.parseDOM(htmlData, "param", attrs = {'name' : 'playerID'}, ret = 'value')
-        linkBaseURL = common.parseDOM(htmlData, "param", attrs = {'name' : 'linkBaseURL'}, ret = 'value')
-        videoPlayer = common.parseDOM(htmlData, "param", attrs = {'name' : '@videoPlayer'}, ret = 'value')
-        myExperience = common.parseDOM(htmlData, "object", attrs = {'class' : 'BrightcoveExperience'}, ret = 'id')
-        if videoHint and playerKey and player_id_value and videoPlayer:
-            break
-        else:
-            login()
-            
-    if not player_id_value:
-        dialog = xbmcgui.Dialog()
-        dialog.ok("Premium Content", "You need an ABS-CBN Mobile subscription to view this content.", 'You can upgrade your subscription via the iWantv website.')
-        return False
-        
-    player_id = player_id_value[0].replace("'", '')
-    videoBaseUrl = ''
-    if len(linkBaseURL) > 0:
-        videoBaseUrl = linkBaseURL[0]
-    else:
-        videoBaseUrl = baseUrl + url
-    isMyExperience = False
-    if len(myExperience) > 0 and myExperience[0] == 'myExperience':
-        isMyExperience = True
-    videoUrl = getVideoUrl(videoBaseUrl, brightCoveToken, playerKey[0], player_id, videoPlayer[0], isMyExperience, publisherId)
-    liz=xbmcgui.ListItem(name, iconImage = "DefaultVideo.png", thumbnailImage = thumbnail)
-    liz.setInfo( type="Video", infoLabels = { "Title": name } )
-    if 'm3u8' in videoUrl:
-        pass
-    elif videoUrl.startswith('rtmp'):
-        pass
-        import re
-        pattern = ''
-        app = ''
-        if r'/ondemand/' in videoUrl:
-            app = 'ondemand'
-            pattern = re.compile(r'/ondemand/&(mp4:.+\.mp4)')
-        else:
-            app = 'live'
-            pattern = re.compile(r'/live/&(.+)')
-        m = pattern.search(videoUrl)
-        playPath = ''
-        if m:
-            playPath = m.group(1)
-        if app == 'ondemand':
-            videoUrl = videoUrl.replace('/ondemand/&mp4', '/ondemand/mp4')
-        if app == 'live':
-            #liz.setProperty('live', '1')
-            videoUrl = videoUrl + ' live=1 app=live playPath=' + playPath + ' swfUrl=' + 'http://admin.brightcove.com/viewer/us20130222.1010/BrightcoveBootloader.swf'
-            
-        liz.setProperty('app', app)
-        liz.setProperty('PlayPath', playPath)
-        liz.setProperty('IsPlayable', 'true')
-    else:
-        pass
-    if not isXForwardedForIpValid():
-        autoGenerateIp()
-    videoUrl = '%s|X-Forwarded-For=%s' % (videoUrl, thisAddon.getSetting('xForwardedForIp'))
-    liz.setPath(videoUrl)
-    return xbmcplugin.setResolvedUrl(thisPlugin, True, liz)
-    
-def callServiceApi(path, params = {}, headers = [], opener = None):
-    if opener == None:
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookieJar))
-        #opener = urllib2.build_opener(urllib2.ProxyHandler({'http': '127.0.0.1:8888'}), urllib2.HTTPCookieProcessor(cookieJar))
-        isProxyEnabled = True if thisAddon.getSetting('isProxyEnabled') == 'true' else False
-        if isProxyEnabled:
-            opener = urllib2.build_opener(urllib2.ProxyHandler({'http': thisAddon.getSetting('proxyAddress')}), urllib2.HTTPCookieProcessor(cookieJar))
-    else:
-        urllib2.install_opener(opener)
-    if not isXForwardedForIpValid():
-        autoGenerateIp()
-    headers.append(('X-Forwarded-For', thisAddon.getSetting('xForwardedForIp')))
-    headers.append(('User-Agent', userAgent))
-    opener.addheaders = headers
-    if params:
-        data_encoded = urllib.urlencode(params)
-        response = opener.open(baseUrl + path, data_encoded)
-    else:
-        response = opener.open(baseUrl + path)
-    return response.read()
-    
-def login():
-    cookieJar.clear()
-    emailAddress = thisAddon.getSetting('emailAddress')
-    password = thisAddon.getSetting('password')
-    formdata = { "loginID" : emailAddress, "password": password }
-    callServiceApi("/Account/UserLoginAjax", formdata)
-    cookieJar.save(ignore_discard = True, ignore_expires = True)
-    
-def checkAccountChange():
-    emailAddress = thisAddon.getSetting('emailAddress')
-    password = thisAddon.getSetting('password')
-    hash = hashlib.sha1(emailAddress + password).hexdigest()
-    hashFile = os.path.join(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile')), 'a.tmp')
-    savedHash = ''
-    accountChanged = False
-    if os.path.exists(hashFile):
-        with open(hashFile) as f:
-            savedHash = f.read()
-    if savedHash != hash:
-        login()
-        accountChanged = True
-    if os.path.exists(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile'))):
-        with open(hashFile, 'w') as f:
-            f.write(hash)
-    return accountChanged
-
-def isXForwardedForIpValid():
-    xForwardedForIp = xbmcaddon.Addon().getSetting('xForwardedForIp').strip()
-    if xForwardedForIp == '0.0.0.0' or xForwardedForIp == '':
+def is_x_forwarded_for_ip_valid():
+    x_forwarded_for_ip = xbmcaddon.Addon().getSetting('xForwardedForIp').strip()
+    if x_forwarded_for_ip == '0.0.0.0' or x_forwarded_for_ip == '':
         return False
     return True
     
-def autoGenerateIp():
-    ipRanges = [
+def auto_generate_ip():
+    ip_range_list = [
         (1848401920, 1848406015),
         (1884172288, 1884176383),
         (1931427840, 1931431935),
         (2000617472, 2000621567),
         (2070704128, 2070708223),
     ]
-    from random import randint
-    startIpNumber, endIpNumber = ipRanges[randint(0, len(ipRanges) - 1)]
-    ipNumber = randint(startIpNumber, endIpNumber)
-    w = (ipNumber / 16777216) % 256
-    x = (ipNumber / 65536) % 256
-    y = (ipNumber / 256) % 256
-    z = (ipNumber) % 256
+
+    start_ip_number, end_ip_number = ip_range_list[randint(0, len(ip_range_list) - 1)]
+    ip_number = randint(start_ip_number, end_ip_number)
+    w = (ip_number / 16777216) % 256
+    x = (ip_number / 65536) % 256
+    y = (ip_number / 256) % 256
+    z = (ip_number) % 256
     if z == 0: z = 1
     if z == 255: z = 254
-    ipAddress = '%s.%s.%s.%s' % (w, x, y, z)
-    xbmcaddon.Addon().setSetting('xForwardedForIp', ipAddress)
+    ip_address = '%s.%s.%s.%s' % (w, x, y, z)
+    xbmcaddon.Addon().setSetting('xForwardedForIp', ip_address)
     
-def getFromCache(key):
-    try:
-        if isCacheEnabled:
-            cacheKey = hashlib.sha1(key).hexdigest()
-            return SimpleCache(cacheExpirySeconds).get(cacheKey)
-        else:
-            return None
-    except:
-        return None
-
-def setToCache(key, value):
-    try:
-        if isCacheEnabled:
-            cacheKey = hashlib.sha1(key).hexdigest()
-            SimpleCache(cacheExpirySeconds).set(cacheKey, value)
-    except:
-        pass
-
-def cleanCache(force = False):
-    try:
-        if isCacheEnabled:
-            purgeAfterSeconds = int(thisAddon.getSetting('purgeAfterDays')) * 24 * 60 * 60
-            if force:
-                purgeAfterSeconds = 0
-            return SimpleCache(cacheExpirySeconds).cleanCache(purgeAfterSeconds)
-        else:
-            return None
-    except:
-        return None
+def try_get_param(params, name, default_value = None):
+    return params[name][0] if name in params else default_value
     
-def getParams():
-    param={}
-    paramstring=sys.argv[2]
-    if len(paramstring)>=2:
-            params=sys.argv[2]
-            cleanedparams=params.replace('?','')
-            if (params[len(params)-1]=='/'):
-                    params=params[0:len(params)-2]
-            pairsofparams=cleanedparams.split('&')
-            param={}
-            for i in range(len(pairsofparams)):
-                    splitparams={}
-                    splitparams=pairsofparams[i].split('=')
-                    if (len(splitparams))==2:
-                            param[splitparams[0]]=splitparams[1]
-    return param
-
-def addDir(name, url, mode, thumbnail, page = 1, isFolder = True, **kwargs):
-    u=sys.argv[0]+"?url="+urllib.quote_plus(url)+"&mode="+str(mode)+"&name="+urllib.quote_plus(name)+"&page="+str(page)+"&thumbnail="+urllib.quote_plus(thumbnail)
-    liz=xbmcgui.ListItem(name, iconImage="DefaultFolder.png", thumbnailImage=thumbnail)
-    liz.setInfo( type="Video", infoLabels={ "Title": name } )
-    for k, v in kwargs.iteritems():
-        if k == 'listProperties':
-            for listPropertyKey, listPropertyValue in v.iteritems():
-                liz.setProperty(listPropertyKey, listPropertyValue)
-    return xbmcplugin.addDirectoryItem(handle=thisPlugin,url=u,listitem=liz,isFolder=isFolder)
-    
-def showMessage(message, title = xbmcaddon.Addon().getLocalizedString(50701)):
+def show_message(message, title = xbmcaddon.Addon().getLocalizedString(50701)):
     if not message:
         return
     xbmc.executebuiltin("ActivateWindow(%d)" % (10147, ))
@@ -589,70 +195,16 @@ def showMessage(message, title = xbmcaddon.Addon().getLocalizedString(50701)):
     win.getControl(1).setLabel(title)
     win.getControl(5).setText(message)
     
-thisPlugin = int(sys.argv[1])
-userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.37 Safari/537.36'
-baseUrl = 'http://www.iwantv.com.ph'
-cookieJarType = ''
-cookieJar = cookielib.CookieJar()
-if os.path.exists(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile'))):
-    cookieFile = os.path.join(xbmc.translatePath(xbmcaddon.Addon().getAddonInfo('profile')), 'iwantv.cookie')
-    cookieJar = cookielib.LWPCookieJar(cookieFile)
-    cookieJarType = 'LWPCookieJar'
+this_addon = xbmcaddon.Addon()
+mode = MODE_CATEGORY
+this_plugin = int(sys.argv[1])
+params = urlparse.parse_qs(sys.argv[2].replace('?',''))
+name = try_get_param(params, 'name')
+mode= int(try_get_param(params, 'mode', mode))
+thumb = try_get_param(params, 'thumb', '')
+id = try_get_param(params, 'id')
 
-if cookieJarType == 'LWPCookieJar':
-    try:
-        cookieJar.load(ignore_discard = True, ignore_expires = True)
-    except:
-        login()
-else:
-    login()
-
-params=getParams()
-url=None
-name=None
-mode=None
-page=1
-thumbnail = ''
-thumb = ''
-brightCoveToken = 'f9c60da6432f7642249592a9d2669046515cb302'
-publisherId = 1213020456001
-cacheExpirySeconds = int(thisAddon.getSetting('cacheHours')) * 60 * 60
-isCacheEnabled = True if thisAddon.getSetting('isCacheEnabled') == 'true' else False
-liveShowsPath = '/TV/Channel/3'
-
-id = None
-mode = 1
-
-try:
-    url=urllib.unquote_plus(params["url"])
-except:
-    pass
-try:
-    name=urllib.unquote_plus(params["name"])
-except:
-    pass
-try:
-    mode=int(params["mode"])
-except:
-    pass
-try:
-    page=int(params["page"])
-except:
-    pass
-try:
-    thumbnail=urllib.unquote_plus(params["thumbnail"])
-except:
-    pass
-try:
-    id = urllib.unquote_plus(params["id"])
-except:
-    pass
-try:
-    thumb=urllib.unquote_plus(params["thumb"])
-except:
-    pass
-
-if mode == MODE_CATEGORY or id == None or len(id) < 1:
+if mode == MODE_CATEGORY or not id or len(id) == 0:
     show_categories()
 elif mode == MODE_SUBCATEGORY:
     show_subcategories(id)
@@ -663,27 +215,11 @@ elif mode == MODE_PLAY or mode == MODE_PLAY_LIVE:
 elif mode == MODE_WORLD_DETAIL:
     show_world_details(id)
     
-
-# if mode == None or url == None or len(url) < 1:
-    # show_categories()
-    # # showCategories()
-# elif mode == 1:
-    # showSubCategories(url)
-# elif mode == 2:
-    # showShows(url)
-# elif mode == 3:
-    # showEpisodes(url)
-# elif mode == 4 or mode == 5:
-    # playEpisode(url, mode)
-# elif mode == 10:
-    # showSubscribedCategories(url)
-# elif mode == 11:
-    # showSubscribedShows(url)
-
-if thisAddon.getSetting('announcement') != thisAddon.getAddonInfo('version'):
+if this_addon.getSetting('announcement') != this_addon.getAddonInfo('version'):
     messages = {
-        '0.0.30': 'Your iWantv addon has been updated.\n\niWantv did a lot of breaking changes and this addon has been changed to follow them. Please check their website to see what changed. This is the first release of this addon since iWantv made their changes and and therefore contains a lot of bugs... and hot garbage :-P. By the way, have I mentioned that I accept Starbucks gift cards... or tickets... to Disneyland... in Japan... with plane tickets... to Japan... and the Philippines... hah! Anyway, enjoy watching!'
+        '1.0.0': 'Your iWantv addon has been updated.\n\nThe addon now remembers where you left off on your favorite teleserye plus lots of other improvements. Enjoy watching!'
         }
-    if thisAddon.getAddonInfo('version') in messages:
-        showMessage(messages[thisAddon.getAddonInfo('version')], xbmcaddon.Addon().getLocalizedString(50701))
-        xbmcaddon.Addon().setSetting('announcement', thisAddon.getAddonInfo('version'))
+    if this_addon.getAddonInfo('version') in messages:
+        show_message(messages[this_addon.getAddonInfo('version')], xbmcaddon.Addon().getLocalizedString(50701))
+        xbmcaddon.Addon().setSetting('announcement', this_addon.getAddonInfo('version'))
+
