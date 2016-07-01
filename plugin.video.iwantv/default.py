@@ -127,7 +127,7 @@ def http_request(url, params = {}, headers = []):
     if is_proxy_enabled:
         opener = urllib2.build_opener(urllib2.ProxyHandler({'http': this_addon.getSetting('proxyAddress')}))
     if not is_x_forwarded_for_ip_valid():
-        auto_gnerate_ip()
+        auto_generate_ip()
     headers.append(('X-Forwarded-For', this_addon.getSetting('xForwardedForIp')))
     headers.append(('User-Agent', USER_AGENT))
     opener.addheaders = headers
