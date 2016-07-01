@@ -2,12 +2,10 @@
 <addons>
     <addon id="plugin.video.iwantv"
            name="iWantv"
-           version="0.0.30"
+           version="1.0.0"
            provider-name="mang.pakundo">
       <requires>
         <import addon="xbmc.python" version="2.1.0"/>
-        <import addon="script.module.parsedom" version="0.9.1"/>
-        <import addon="script.module.pyamf" version="0.6.1"/>
       </requires>
       <extension point="xbmc.python.pluginsource"
                 library="default.py">
@@ -15,7 +13,7 @@
       </extension>
       <extension point="xbmc.addon.metadata">
         <summary>iWantv</summary>
-        <description>This is still in Alpha. iWantv account is required.</description>
+        <description>An iWantv account is required.</description>
         <platform>all</platform>
       </extension>
     </addon>
