@@ -49,29 +49,40 @@ def show_subcategories(id):
         fanart = get_program_image(sub['program_images'], 'hi')
         # if these are the live stream sub-categories, then jump directly to play episode since live streams don't have episodes
         mode = MODE_PLAY_LIVE if id == LIVE_STREAM_ID else MODE_EPISODE
-        add_dir(sub['program_title'], str(sub['program_id']), mode, art = {'thumb': thumb, 'fanart': fanart})
+        # make these playable list items if we're dealing with live stream because
+        # kodi in android doesn't honor headers piped through the URL and we just setResolvedURL down the line
+        is_folder = False if id == LIVE_STREAM_ID else True
+        list_properties = {'isPlayable': 'true', 'isLive': 'true'} if id == LIVE_STREAM_ID else {}
+        art = {'thumb': thumb, 'fanart': fanart}
+        info_labels = {'plot': sub.get('program_description')}
+        add_dir(sub['program_title'], str(sub['program_id']), mode, is_folder = is_folder, art = art, list_properties = list_properties, info_labels = info_labels)
     xbmcplugin.endOfDirectory(this_plugin)
     
 def show_episodes(id):
     url = build_url('/home/GetContent', params = {'program_id': id})
     episodes = get_json_response(url)
-    fanart = get_program_image(episodes['DATA'][0]['ProgramThumbnailImages'], 'large')
+    fanart = get_program_image(episodes['DATA'][0].get('ProgramThumbnailImages'), 'large')
+    program_description = episodes['DATA'][0].get('ProgramDesc')
     for episode in episodes['DATA'][0]['Episodes']:
         thumb = get_program_image(episode['EpisodeThumbnail'], 'hi')
-        # set this list property as playable and not a folder and do a setResolvedUrl in the method that handles playing.
+        # set this list property as playable and not a folder and do a setResolvedURL in the method that handles playing.
         # this is they way i was able to make kodi remember the watched episodes as well as mark the elapsed time
         art = {'thumb': thumb, 'fanart': fanart}
         list_properties = {'isPlayable': 'true'}
-        add_dir(episode['EpisodeTitle'], episode['EpisodeID'], MODE_PLAY, is_folder = False, art = art, list_properties = list_properties)
+        episode_description = episode.get('EpisodeDescription')
+        plot = episode_description if episode_description else program_description
+        info_labels = {'plot': plot, 'cast': filter(None, episode.get('Casts', ',').split(','))}
+        add_dir(episode['EpisodeTitle'], episode['EpisodeID'], MODE_PLAY, is_folder = False, art = art, list_properties = list_properties, info_labels = info_labels)
     xbmcplugin.endOfDirectory(this_plugin)
     
 def show_world_details(id):
     url = build_url('/home/GetWorldDetails', params = {'worldid': id, 'ssoid': SSOID})
     world_details = get_json_response(url)
-    fanart = get_program_image(world_details['DATA'][0]['WorldAppImage'], 'hi')
+    fanart = get_program_image(world_details['DATA'][0].get('WorldAppImage'), 'hi')
     for world in world_details['DATA'][0]['ShowData']:
         thumb = get_program_image(world['ShowThumbnailImages'], 'hi')
-        add_dir(world['ShowTitle'], world['ShowId'], MODE_EPISODE, art = {'thumb': thumb, 'fanart': fanart})
+        info_labels = {'cast': filter(None, world.get('Casts', '').split(',')), 'plot': world.get('ShowDescription')}
+        add_dir(world['ShowTitle'], world['ShowId'], MODE_EPISODE, art = {'thumb': thumb, 'fanart': fanart}, info_labels = info_labels)
     xbmcplugin.endOfDirectory(this_plugin)
     
 def play_episode(name, id, thumb):
@@ -93,10 +104,8 @@ def play_episode(name, id, thumb):
     liz.setArt({'thumb': thumb})
     video_url = '%s|X-Forwarded-For=%s' % (video_url, this_addon.getSetting('xForwardedForIp'))
     liz.setPath(video_url)
-    if mode == MODE_PLAY_LIVE:
-        xbmc.Player().play(item = video_url, listitem = liz)
-    else:
-        return xbmcplugin.setResolvedUrl(this_plugin, True, liz)
+    # xbmc.Player().play would have been good for livestream but it does not honor headers piped through the URL in Android
+    return xbmcplugin.setResolvedUrl(this_plugin, True, liz)
     
 # trying to be legit
 def get_iplocation():
@@ -122,6 +131,7 @@ def build_url(path, base_url = API_BASE_URL, params = {}):
         )
     
 def http_request(url, params = {}, headers = []):
+    xbmc.log('uuuuuuuuuuuuuuuuuuuuuuu %s' % url)
     opener = urllib2.build_opener()
     is_proxy_enabled = True if this_addon.getSetting('isProxyEnabled') == 'true' else False
     if is_proxy_enabled:
@@ -146,15 +156,19 @@ def add_dir(name, id, mode, is_folder = True, **kwargs):
     query_string = {'id': id, 'mode': mode, 'name': name.encode('utf8')}
     url = '{addon_name}?{query_string}'.format(addon_name = sys.argv[0], query_string = urllib.urlencode(query_string))
     liz = xbmcgui.ListItem(name)
-    liz.setInfo( type="Video", infoLabels={"Title": name} )
+    info_labels = {"Title": name}
     for k, v in kwargs.iteritems():
-        if k == 'list_properties' and v:
+        if not v:
+            continue
+        if k == 'info_labels':
+            info_labels = dict(info_labels.items() + v.items())
+        if k == 'list_properties':
             for list_property_key, list_property_value in v.iteritems():
                 liz.setProperty(list_property_key, list_property_value)
-        if k == 'art' and v:
+        if k == 'art':
             liz.setArt(v)
             url = '{url}&{art_params}'.format(url = url, art_params = urllib.urlencode(v))
-            
+    liz.setInfo(type = "Video", infoLabels = info_labels)
     return xbmcplugin.addDirectoryItem(handle = this_plugin, url = url, listitem = liz, isFolder = is_folder)
 
 def is_x_forwarded_for_ip_valid():
