@@ -131,7 +131,6 @@ def build_url(path, base_url = API_BASE_URL, params = {}):
         )
     
 def http_request(url, params = {}, headers = []):
-    xbmc.log('uuuuuuuuuuuuuuuuuuuuuuu %s' % url)
     opener = urllib2.build_opener()
     is_proxy_enabled = True if this_addon.getSetting('isProxyEnabled') == 'true' else False
     if is_proxy_enabled:
