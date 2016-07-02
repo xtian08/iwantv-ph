@@ -1,3 +1,6 @@
+1.0.2
+    Fix live stream
+    Added description and cast information
 1.0.1
     Fix IP error
 1.0.0
