@@ -1,3 +1,5 @@
+1.0.3
+    Fix live stream
 1.0.2
     Fix live stream
     Added description and cast information

@@ -49,13 +49,9 @@ def show_subcategories(id):
         fanart = get_program_image(sub['program_images'], 'hi')
         # if these are the live stream sub-categories, then jump directly to play episode since live streams don't have episodes
         mode = MODE_PLAY_LIVE if id == LIVE_STREAM_ID else MODE_EPISODE
-        # make these playable list items if we're dealing with live stream because
-        # kodi in android doesn't honor headers piped through the URL and we just setResolvedURL down the line
-        is_folder = False if id == LIVE_STREAM_ID else True
-        list_properties = {'isPlayable': 'true', 'isLive': 'true'} if id == LIVE_STREAM_ID else {}
         art = {'thumb': thumb, 'fanart': fanart}
         info_labels = {'plot': sub.get('program_description')}
-        add_dir(sub['program_title'], str(sub['program_id']), mode, is_folder = is_folder, art = art, list_properties = list_properties, info_labels = info_labels)
+        add_dir(sub['program_title'], str(sub['program_id']), mode, art = art, info_labels = info_labels)
     xbmcplugin.endOfDirectory(this_plugin)
     
 def show_episodes(id):
@@ -104,8 +100,10 @@ def play_episode(name, id, thumb):
     liz.setArt({'thumb': thumb})
     video_url = '%s|X-Forwarded-For=%s' % (video_url, this_addon.getSetting('xForwardedForIp'))
     liz.setPath(video_url)
-    # xbmc.Player().play would have been good for livestream but it does not honor headers piped through the URL in Android
-    return xbmcplugin.setResolvedUrl(this_plugin, True, liz)
+    if mode == MODE_PLAY_LIVE:
+        xbmc.Player().play(item = video_url, listitem = liz)
+    else:
+        return xbmcplugin.setResolvedUrl(this_plugin, True, liz)
     
 # trying to be legit
 def get_iplocation():
@@ -230,7 +228,7 @@ elif mode == MODE_WORLD_DETAIL:
     
 if this_addon.getSetting('announcement') != this_addon.getAddonInfo('version'):
     messages = {
-        '1.0.0': 'Your iWantv addon has been updated.\n\nThe addon now remembers where you left off on your favorite teleserye plus lots of other improvements. Enjoy watching!'
+        '1.0.3': 'Your iWantv addon has been updated.\n\nThe addon now remembers where you left off on your favorite teleserye plus lots of other improvements. Enjoy watching!'
         }
     if this_addon.getAddonInfo('version') in messages:
         show_message(messages[this_addon.getAddonInfo('version')], xbmcaddon.Addon().getLocalizedString(50701))
