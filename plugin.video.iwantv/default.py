@@ -1,4 +1,8 @@
+import os.path
 import sys
+import pickle
+import hashlib
+import traceback
 import urllib
 import urllib2
 import json
@@ -10,10 +14,10 @@ import xbmcaddon
 from random import randint
 
 USER_AGENT = 'okhttp/2.4.0'
-SSOID = '1d3cf6ad-f133-4e22-aa15-3c9a56e4aefc'
 CLIENT_ID = '4926888'
 CLIENT_SECRET = '176810351025222262192664259613215154'
 API_BASE_URL = 'http://cms.iwantv.com.ph'
+LOGIN_BASE_URL = 'http://accounts.abs-cbn.com'
 BASIC_CREDENTIALS = {'client_id': CLIENT_ID, 'client_secret': CLIENT_SECRET}
 LIVE_STREAM_ID = '/content/GetLiveStreams'
 MODE_CATEGORY = 1
@@ -72,7 +76,10 @@ def show_episodes(id):
     xbmcplugin.endOfDirectory(this_plugin)
     
 def show_world_details(id):
-    url = build_url('/home/GetWorldDetails', params = {'worldid': id, 'ssoid': SSOID})
+    sso_id = get_ssoid()
+    if not sso_id:
+        return
+    url = build_url('/home/GetWorldDetails', params = {'worldid': id, 'ssoid': sso_id})
     world_details = get_json_response(url)
     fanart = get_program_image(world_details['DATA'][0].get('WorldAppImage'), 'hi')
     for world in world_details['DATA'][0]['ShowData']:
@@ -85,7 +92,10 @@ def play_episode(name, id, thumb):
     get_iplocation()
     program_id = id if mode == MODE_PLAY_LIVE else ''
     episode_id = id if mode == MODE_PLAY else ''
-    params = {'ssoid': SSOID, 'programId': program_id, 'EpisodeID': episode_id, 'IP': this_addon.getSetting('xForwardedForIp'), 'sstostage': 'PRD'}
+    sso_id = get_ssoid()
+    if not sso_id:
+        return
+    params = {'ssoid': sso_id, 'programId': program_id, 'EpisodeID': episode_id, 'IP': this_addon.getSetting('xForwardedForIp'), 'sstostage': 'PRD'}
     url = build_url('/content/ssogetasset', params = params)
     assets = get_json_response(url)
     if not assets['SUCCESS']:
@@ -115,9 +125,59 @@ def get_program_image(program_images, img_dpi):
         return images[0]
     except:
         return None
+        
+def get_account_hash():
+    email_address = this_addon.getSetting('emailAddress')
+    password = this_addon.getSetting('password')
+    return hashlib.sha1(email_address + password).hexdigest()
+        
+def read_sso_id_from_file():
+    sso_id = None
+    try:
+        with open(sso_file, 'rb') as f:
+            sso_data = pickle.load(f)
+            account_hash = get_account_hash()
+            sso_id = sso_data.get(account_hash)
+    except:
+        xbmc.log(traceback.format_exc())
+    return sso_id
+    
+def get_new_sso_id():
+    sso_id = None
+    try:
+        url = build_url('/api/oauth/accessTokenSSO', base_url = LOGIN_BASE_URL, params = {'_urlRefferer': 'com.abs-cbn.iwanttv'})
+        access_data = get_json_response(url, params = {'a': ''})
+        url = build_url('/api/iwantv/Login', base_url = LOGIN_BASE_URL, params = {'access_token': access_data.get('access_token'), 'device': 'app'})
+        email_address = this_addon.getSetting('emailAddress')
+        password = this_addon.getSetting('password')
+        login_data = get_json_response(url, params = {'loginID': email_address, 'password': password})
+        if not login_data.get('SUCCESS'):
+            dialog = xbmcgui.Dialog()
+            dialog.ok('Login Failed', login_data.get('MESSAGE'))
+            return None
+        sso_id = login_data['USER']['Id']
+            
+    except:
+        xbmc.log(traceback.format_exc())
+    return sso_id
+
+def get_ssoid():
+    account_hash = get_account_hash()
+    sso_id = read_sso_id_from_file()
+    if not sso_id:
+        sso_id = get_new_sso_id()
+        if not sso_id:
+            return
+        with open(sso_file, 'wb') as f:
+            sso_data = {account_hash: sso_id}
+            pickle.dump(sso_data, f)
+    return sso_id
     
 def get_all_worlds_by_sso_id(last_row, max_count):
-    url = build_url('/home/GetAllWorldsBySSOID', params = {'ssoid': SSOID, 'lastRow':  last_row, 'maxCount':  max_count})
+    sso_id = get_ssoid()
+    if not sso_id:
+        return
+    url = build_url('/home/GetAllWorldsBySSOID', params = {'ssoid': sso_id, 'lastRow':  last_row, 'maxCount':  max_count})
     return get_json_response(url)
     
 def build_url(path, base_url = API_BASE_URL, params = {}):
@@ -145,8 +205,8 @@ def http_request(url, params = {}, headers = []):
         response = opener.open(url)
     return response.read()
     
-def get_json_response(url):
-    response = http_request(url)
+def get_json_response(url, params = {}):
+    response = http_request(url, params = params)
     return json.loads(response)
     
 def add_dir(name, id, mode, is_folder = True, **kwargs):
@@ -207,6 +267,7 @@ def show_message(message, title = xbmcaddon.Addon().getLocalizedString(50701)):
     win.getControl(5).setText(message)
     
 this_addon = xbmcaddon.Addon()
+sso_file = os.path.join(xbmc.translatePath(this_addon.getAddonInfo('profile')), 'sso.dat')
 mode = MODE_CATEGORY
 this_plugin = int(sys.argv[1])
 params = urlparse.parse_qs(sys.argv[2].replace('?',''))
@@ -228,7 +289,7 @@ elif mode == MODE_WORLD_DETAIL:
     
 if this_addon.getSetting('announcement') != this_addon.getAddonInfo('version'):
     messages = {
-        '1.0.3': 'Your iWantv addon has been updated.\n\nThe addon now remembers where you left off on your favorite teleserye plus lots of other improvements. Enjoy watching!'
+        '1.0.4': 'Your iWantv addon has been updated.\n\nImprovements included! Enjoy watching!'
         }
     if this_addon.getAddonInfo('version') in messages:
         show_message(messages[this_addon.getAddonInfo('version')], xbmcaddon.Addon().getLocalizedString(50701))
