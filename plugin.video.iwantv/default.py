@@ -36,10 +36,12 @@ def show_categories():
     
     all_worlds = get_all_worlds_by_sso_id(0, 10)
     for world in all_worlds['DATA']:
-        categories.append({'name': world['worldTitle'], 'id': world['worldID'], 'mode': MODE_WORLD_DETAIL})
+        title = world['worldTitle'] if is_subscribed(world.get('Tiers')) else '[I]{0}[/I]'.format(world['worldTitle'])
+        categories.append({'name': title, 'id': world['worldID'], 'mode': MODE_WORLD_DETAIL})
     all_worlds = get_all_worlds_by_sso_id(10, 10)
     for world in all_worlds['DATA']:
-        categories.append({'name': world['worldTitle'], 'id': world['worldID'], 'mode': MODE_WORLD_DETAIL})
+        title = world['worldTitle'] if is_subscribed(world.get('Tiers')) else '[I]{0}[/I]'.format(world['worldTitle'])
+        categories.append({'name': title, 'id': world['worldID'], 'mode': MODE_WORLD_DETAIL})
         
     for category in categories:
         add_dir(category['name'], category['id'], category['mode'])
@@ -55,7 +57,8 @@ def show_subcategories(id):
         mode = MODE_PLAY_LIVE if id == LIVE_STREAM_ID else MODE_EPISODE
         art = {'thumb': thumb, 'fanart': fanart}
         info_labels = {'plot': sub.get('program_description')}
-        add_dir(sub['program_title'], str(sub['program_id']), mode, art = art, info_labels = info_labels)
+        title = sub['program_title'] if is_subscribed(sub.get('Tiers')) else '[I]{0}[/I]'.format(sub['program_title'])
+        add_dir(title, str(sub['program_id']), mode, art = art, info_labels = info_labels)
     xbmcplugin.endOfDirectory(this_plugin)
     
 def show_episodes(id):
@@ -76,7 +79,7 @@ def show_episodes(id):
     xbmcplugin.endOfDirectory(this_plugin)
     
 def show_world_details(id):
-    sso_id = get_ssoid()
+    sso_id = user_data['sso_id']
     if not sso_id:
         return
     url = build_url('/home/GetWorldDetails', params = {'worldid': id, 'ssoid': sso_id})
@@ -85,14 +88,15 @@ def show_world_details(id):
     for world in world_details['DATA'][0]['ShowData']:
         thumb = get_program_image(world['ShowThumbnailImages'], 'hi')
         info_labels = {'cast': filter(None, world.get('Casts', '').split(',')), 'plot': world.get('ShowDescription')}
-        add_dir(world['ShowTitle'], world['ShowId'], MODE_EPISODE, art = {'thumb': thumb, 'fanart': fanart}, info_labels = info_labels)
+        title = world['ShowTitle'] if is_subscribed(world.get('Tiers')) else '[I]{0}[/I]'.format(world['ShowTitle'])
+        add_dir(title, world['ShowId'], MODE_EPISODE, art = {'thumb': thumb, 'fanart': fanart}, info_labels = info_labels)
     xbmcplugin.endOfDirectory(this_plugin)
     
 def play_episode(name, id, thumb):
     get_iplocation()
     program_id = id if mode == MODE_PLAY_LIVE else ''
     episode_id = id if mode == MODE_PLAY else ''
-    sso_id = get_ssoid()
+    sso_id = user_data['sso_id']
     if not sso_id:
         return
     params = {'ssoid': sso_id, 'programId': program_id, 'EpisodeID': episode_id, 'IP': this_addon.getSetting('xForwardedForIp'), 'sstostage': 'PRD'}
@@ -126,22 +130,54 @@ def get_program_image(program_images, img_dpi):
     except:
         return None
         
+def is_subscribed(tiers):
+    subscribed = True
+    try:
+        # just assume that we are subscribed
+        xbmc.log('asdfadfadf' + str(tiers))
+        if not tiers:
+            return True
+        program_package_ids = [int(t['Key']) for t in tiers]
+        subscribed_ids = [i for i in program_package_ids if i in user_data['package_ids']]
+        subscribed = len(subscribed_ids) > 0
+    except:
+        xbmc.log(traceback.format_exc())
+    return subscribed
+        
 def get_account_hash():
     email_address = this_addon.getSetting('emailAddress')
     password = this_addon.getSetting('password')
     return hashlib.sha1(email_address + password).hexdigest()
-        
-def read_sso_id_from_file():
-    sso_id = None
+    
+def has_required_properties(data):
+    return data.get('account_hash') == get_account_hash() and data.get('sso_id') and data.has_key('package_ids')
+    
+def get_user_data(user_file):
+    data = {}
     try:
-        with open(sso_file, 'rb') as f:
-            sso_data = pickle.load(f)
-            account_hash = get_account_hash()
-            sso_id = sso_data.get(account_hash)
+        data = read_user_file(user_file)
+        account_hash = data.get('account_hash')
+        if not has_required_properties(data):
+            data = get_new_user_data()
+            write_user_file(user_file, data)
     except:
         xbmc.log(traceback.format_exc())
-    return sso_id
+    return data
     
+def read_user_file(user_file):
+    with open(user_file, 'rb') as f:
+        return pickle.load(f)
+        
+def write_user_file(user_file, data):
+    with open(user_file, 'wb') as f:
+        pickle.dump(data, f)
+        
+def get_new_user_data():
+    sso_id = get_new_sso_id()
+    package_ids = get_new_package_ids(sso_id)
+    account_hash = get_account_hash()
+    return {'account_hash': account_hash, 'sso_id': sso_id, 'package_ids': package_ids}
+        
 def get_new_sso_id():
     sso_id = None
     try:
@@ -160,21 +196,29 @@ def get_new_sso_id():
     except:
         xbmc.log(traceback.format_exc())
     return sso_id
-
-def get_ssoid():
-    account_hash = get_account_hash()
-    sso_id = read_sso_id_from_file()
-    if not sso_id:
-        sso_id = get_new_sso_id()
-        if not sso_id:
-            return
-        with open(sso_file, 'wb') as f:
-            sso_data = {account_hash: sso_id}
-            pickle.dump(sso_data, f)
-    return sso_id
+    
+def get_new_package_ids(sso_id):
+    package_ids = []
+    try:
+        url = build_url('/Interface/GetUserType', params = {'device': 'android', 'ssoid': sso_id, 'sstostage': 'PRD'})
+        user_type = get_json_response(url)
+        packages = user_type.get('DATA', {}).get('Packages')
+        package_ids = [p['PackageId'] for p in packages]
+    except:
+        xbmc.log(traceback.format_exc())
+    return package_ids
+    
+def get_package_ids():
+    package_ids = user_data.get('package_ids') if user_data else []
+    if pacakge_ids:
+        return package_ids
+    package_ids = get_new_package_ids()
+    if not package_ids:
+        return []
+    new_data
     
 def get_all_worlds_by_sso_id(last_row, max_count):
-    sso_id = get_ssoid()
+    sso_id = user_data['sso_id']
     if not sso_id:
         return
     url = build_url('/home/GetAllWorldsBySSOID', params = {'ssoid': sso_id, 'lastRow':  last_row, 'maxCount':  max_count})
@@ -267,7 +311,8 @@ def show_message(message, title = xbmcaddon.Addon().getLocalizedString(50701)):
     win.getControl(5).setText(message)
     
 this_addon = xbmcaddon.Addon()
-sso_file = os.path.join(xbmc.translatePath(this_addon.getAddonInfo('profile')), 'sso.dat')
+user_file = os.path.join(xbmc.translatePath(this_addon.getAddonInfo('profile')), 'user.dat')
+user_data = get_user_data(user_file)
 mode = MODE_CATEGORY
 this_plugin = int(sys.argv[1])
 params = urlparse.parse_qs(sys.argv[2].replace('?',''))
