@@ -108,7 +108,7 @@ def play_episode(name, id, thumb):
     liz = xbmcgui.ListItem(name)
     liz.setInfo(type="Video", infoLabels={"Title": name})
     liz.setArt({'thumb': thumb})
-    video_url = '%s|X-Forwarded-For=%s' % (video_url, this_addon.getSetting('xForwardedForIp'))
+    video_url = '{video_url}|X-Forwarded-For={x_forwarded_for}&User-Agent={user_agent}'.format(video_url = video_url, x_forwarded_for = this_addon.getSetting('xForwardedForIp'), user_agent = USER_AGENT)
     liz.setPath(video_url)
     if mode == MODE_PLAY_LIVE:
         xbmc.Player().play(item = video_url, listitem = liz)
